@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Toast",
+  "version": "1.0",
+  "description": "Customizable floating action menu for text selections.",
+  "permissions": [
+    "storage",
+    "clipboardRead",
+    "clipboardWrite",
+    "favicon",
+    "sidePanel"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Butter Your Toast!"
+  },
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  }
+}

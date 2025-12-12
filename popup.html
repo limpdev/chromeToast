@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <style>
+    body {
+      width: 320px;
+      font-family: sans-serif;
+      padding: 15px;
+      background: #0d1117;
+      color: #ccc;
+    }
+
+    h2 {
+      margin-top: 0;
+      font-size: 16px;
+      margin-bottom: 15px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 10px;
+    }
+
+    .section {
+      margin-bottom: 20px;
+      background: #0d1117;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .label {
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 5px;
+      display: block;
+      color: #ccc;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    input[type="color"] {
+      border: none;
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+    }
+
+    input[type="range"] {
+      width: 100px;
+      color: #ccc;
+      background: #09090a;
+      border-radius: 6px;
+      font-weight: 650;
+    }
+
+    input[type="text"],
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px;
+      font-size: 12px;
+      color: #ccc;
+      background: #09090a;
+      border-radius: 6px;
+      font-weight: 650;
+    }
+
+    textarea {
+      height: 60px;
+      font-family: monospace;
+      resize: vertical;
+      color: #ccc;
+      background: #09090a;
+      border-radius: 6px;
+    }
+
+    button {
+      background: #333;
+      color: #ddd;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    button:hover {
+      background: #555;
+    }
+
+    .btn-item {
+      border: none;
+      padding: 8px;
+      margin-bottom: 8px;
+      border-radius: 4px;
+      background: #0d1117;
+    }
+
+    .btn-header {
+      display: flex;
+      justify-content: space-between;
+      font-weight: bold;
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+
+    .remove-btn {
+      color: rgb(172, 90, 90);
+      cursor: pointer;
+    }
+
+    .secondary-btn {
+      background: #0d1117;
+      color: #ccc;
+      margin-top: 5px;
+    }
+
+    .secondary-btn:hover {
+      background: #ffffff20;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Butter Your Toast!</h2>
+
+  <!-- Visual Settings -->
+  <div class="section">
+    <span class="label">Jellies</span>
+    <div class="row">
+      <span>Toast Color</span>
+      <input type="color" id="bgColor">
+    </div>
+    <div class="row">
+      <span>Toastacity</span>
+      <input type="range" id="bgOpacity" min="0.1" max="1" step="0.1">
+    </div>
+    <div class="row">
+      <span>Butter Hover Color</span>
+      <input type="color" id="hoverColor">
+    </div>
+  </div>
+
+  <!-- Button List -->
+  <div class="section">
+    <span class="label">Butters</span>
+    <div id="buttonList"></div>
+    <button id="addBtn" class="secondary-btn">+More Butter</button>
+  </div>
+
+  <button id="save">Save Butter</button>
+  <p id="status" style="text-align:center; font-size:11px; color:green; height:15px; margin-top:5px;"></p>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>

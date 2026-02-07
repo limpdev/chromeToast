@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3"
+
+vars:
+  GREETING: Hello, world!
+
+tasks:
+  mix:
+    desc: run repomix
+    cmds:
+      - repomix --include "**/*.json,**/*.js,**/*.css,**/*.html" --output "toast.xml"
+      - eza --tree >> toast.xml
+    silent: true

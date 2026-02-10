@@ -1,3 +1,5 @@
+<files>
+<file path="content.js">
 // content.js - Refined & Robust
 ;(function () {
   'use strict'
@@ -79,11 +81,11 @@
     if (!newConfig) return
     // If the saved config has NO buttons (broken state), revert to default buttons
     if (!newConfig.buttons || newConfig.buttons.length === 0) {
-      config.buttons = defaultConfig.buttons
+        config.buttons = defaultConfig.buttons;
     } else {
-      config.buttons = newConfig.buttons
+        config.buttons = newConfig.buttons;
     }
-
+    
     if (newConfig.style) {
       config.style = { ...defaultConfig.style, ...newConfig.style }
     }
@@ -128,19 +130,17 @@
       iconsReady = true
       return
     }
-
+    
     animState.buttonHovers = new Array(totalIcons).fill(0)
     animState.buttonActive = new Array(totalIcons).fill(0)
-
+    
     config.buttons.forEach(btn => {
       const img = new Image()
       let src = btn.icon || ''
       if (src.trim().startsWith('<svg')) {
         try {
           // Explicitly setting charset to utf-8 helps with some SVG parsing issues
-          src =
-            'data:image/svg+xml;charset=utf-8;base64,' +
-            window.btoa(unescape(encodeURIComponent(src)))
+          src = 'data:image/svg+xml;charset=utf-8;base64,' + window.btoa(unescape(encodeURIComponent(src)))
         } catch (e) {
           console.error('Icon encoding failed', e)
         }
@@ -151,7 +151,7 @@
         checkReady()
       }
       img.onerror = () => {
-        console.warn(`Failed to load icon for ${btn.id}`)
+        console.warn(`Failed to load icon for ${btn.id}`);
         loadedCount++
         checkReady()
       }
@@ -200,34 +200,33 @@
   function showToast (rect) {
     const { padding, buttonSize, buttonSpacing } = config.style
     const count = config.buttons.length
-    const totalWidth =
-      padding * 2 + buttonSize * count + buttonSpacing * (count - 1)
+    const totalWidth = padding * 2 + buttonSize * count + buttonSpacing * (count - 1)
     const totalHeight = padding * 2 + buttonSize
     const buffer = 50
     const dpr = window.devicePixelRatio || 1
-
+    
     canvas.style.width = totalWidth + buffer * 2 + 'px'
     canvas.style.height = totalHeight + buffer * 2 + 'px'
     canvas.width = (totalWidth + buffer * 2) * dpr
     canvas.height = (totalHeight + buffer * 2) * dpr
-
+    
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.scale(dpr, dpr)
-
+    
     let left = rect.left + rect.width / 2 - totalWidth / 2
     let top = rect.top - totalHeight - 16
-
+    
     if (top < 0) top = rect.bottom + 16
     if (left < 10) left = 10
     if (left + totalWidth > window.innerWidth - 10) {
       left = window.innerWidth - totalWidth - 10
     }
-
+    
     canvas.style.left = left - buffer + 'px'
     canvas.style.top = top - buffer + 'px'
     canvas.style.display = 'block'
     canvas.style.pointerEvents = 'auto'
-
+    
     if (!isVisible) {
       isVisible = true
       animState.opacity = 0
@@ -265,11 +264,7 @@
   function hexToRgb (hex) {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
     return result
-      ? {
-          r: parseInt(result[1], 16),
-          g: parseInt(result[2], 16),
-          b: parseInt(result[3], 16)
-        }
+      ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
       : { r: 0, g: 0, b: 0 }
   }
 
@@ -278,26 +273,18 @@
     const speed = animSpeed || 0.2
     const targetOpacity = isVisible ? 1 : 0
     const targetScale = isVisible ? 1 : 0.9
-
+    
     animState.opacity = lerp(animState.opacity, targetOpacity, speed)
     animState.scale = lerp(animState.scale, targetScale, speed)
-
+    
     config.buttons.forEach((_, i) => {
       const isHover = animState.hoveredButtonIndex === i
       const hoverTarget = isHover ? 1 : 0
-      animState.buttonHovers[i] = lerp(
-        animState.buttonHovers[i] || 0,
-        hoverTarget,
-        speed * 1.5
-      )
-
+      animState.buttonHovers[i] = lerp(animState.buttonHovers[i] || 0, hoverTarget, speed * 1.5)
+      
       const isActive = isHover && isMouseDown
       const activeTarget = isActive ? 1 : 0
-      animState.buttonActive[i] = lerp(
-        animState.buttonActive[i] || 0,
-        activeTarget,
-        speed * 2
-      )
+      animState.buttonActive[i] = lerp(animState.buttonActive[i] || 0, activeTarget, speed * 2)
     })
   }
 
@@ -305,16 +292,13 @@
     const { style, buttons: btnConfig } = config
     const buffer = 50
     const count = btnConfig.length
-    const totalW =
-      style.padding * 2 +
-      style.buttonSize * count +
-      style.buttonSpacing * (count - 1)
+    const totalW = style.padding * 2 + style.buttonSize * count + style.buttonSpacing * (count - 1)
     const totalH = style.padding * 2 + style.buttonSize
     const dpr = window.devicePixelRatio || 1
-
+    
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
     if (animState.opacity < 0.01) return
-
+    
     ctx.save()
     const cx = buffer + totalW / 2
     const cy = buffer + totalH / 2
@@ -322,27 +306,24 @@
     ctx.scale(animState.scale, animState.scale)
     ctx.translate(-cx, -cy)
     ctx.globalAlpha = animState.opacity
-
+    
     const bgRgb = hexToRgb(style.bgColor)
     ctx.fillStyle = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`
     roundRect(ctx, buffer, buffer, totalW, totalH, style.borderRadius)
     ctx.fill()
-
+    
     buttons = []
     let x = buffer + style.padding
     const y = buffer + style.padding
-
+    
     btnConfig.forEach((btn, i) => {
       const hoverVal = animState.buttonHovers[i]
       const activeVal = animState.buttonActive[i]
-
-      const targetScale =
-        1 +
-        hoverVal * (style.hoverScale - 1) -
-        activeVal * (style.hoverScale - style.activeScale)
+      
+      const targetScale = 1 + hoverVal * (style.hoverScale - 1) - activeVal * (style.hoverScale - style.activeScale)
       const currentBtnSize = style.buttonSize * targetScale
       const offset = (style.buttonSize - currentBtnSize) / 2
-
+      
       buttons.push({
         x: x,
         y: y,
@@ -350,25 +331,18 @@
         h: style.buttonSize,
         data: btn
       })
-
+      
       const bx = x + offset
       const by = y + offset
-
+      
       if (hoverVal > 0.01) {
         ctx.fillStyle = style.hoverColor
         ctx.globalAlpha = animState.opacity * style.hoverOpacity * hoverVal
-        roundRect(
-          ctx,
-          bx,
-          by,
-          currentBtnSize,
-          currentBtnSize,
-          style.borderRadius / 2
-        )
+        roundRect(ctx, bx, by, currentBtnSize, currentBtnSize, style.borderRadius / 2)
         ctx.fill()
         ctx.globalAlpha = animState.opacity
       }
-
+      
       const iconImg = loadedIcons[btn.id]
       if (iconImg && iconsReady) {
         const lift = hoverVal * -1 * (style.iconLift || 0)
@@ -376,8 +350,7 @@
         const ix = x + (style.buttonSize - scaledIconSize) / 2
         const iy = y + (style.buttonSize - scaledIconSize) / 2 + lift
 
-        ctx.filter =
-          hoverVal > 0.01 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
+        ctx.filter = hoverVal > 0.01 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
         ctx.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
         ctx.filter = 'none'
       }
@@ -393,14 +366,9 @@
     const my = e.clientY - rect.top
     let cursor = 'default'
     let hoveredIndex = -1
-
+    
     buttons.forEach((btn, i) => {
-      if (
-        mx >= btn.x &&
-        mx <= btn.x + btn.w &&
-        my >= btn.y &&
-        my <= btn.y + btn.h
-      ) {
+      if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
         cursor = 'pointer'
         hoveredIndex = i
       }
@@ -421,7 +389,7 @@
     const btn = buttons[animState.hoveredButtonIndex]
     if (!btn) return
     const { type, url, action } = btn.data
-
+    
     if (type === 'link') {
       const targetUrl = url.includes('%s')
         ? url.replace('%s', encodeURIComponent(currentSelection))
@@ -467,3 +435,211 @@
     init()
   }
 })()
+</file>
+
+<file path="popup.js">
+// popup.js
+document.addEventListener('DOMContentLoaded', () => {
+  const elements = {
+    buttonList: document.getElementById('buttonList'),
+    addBtn: document.getElementById('addBtn'),
+    saveBtn: document.getElementById('save'),
+    status: document.getElementById('status'),
+    styleInputs: document.querySelectorAll('.style-input')
+  }
+
+  // --- ENSURED DEFAULT MATCHES CONTENT.JS ---
+  const defaultConfig = {
+    style: {
+      bgColor: '#0f172a',
+      bgOpacity: 0.95,
+      hoverColor: '#3b82f6',
+      hoverOpacity: 0.2,
+      borderRadius: 12,
+      buttonSize: 36,
+      buttonSpacing: 6,
+      padding: 6,
+      iconSize: 20,
+      animSpeed: 0.2,
+      hoverScale: 1.15,
+      activeScale: 0.95,
+      iconLift: 3
+    },
+    buttons: [
+      {
+        id: 'copy',
+        type: 'action',
+        action: 'copy',
+        // Filled, reliable SVG icon
+        icon: '<svg viewBox="0 0 24 24" fill="#e2e8f0" xmlns="http://www.w3.org/2000/svg"><path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"/></svg>'
+      },
+      {
+        id: 'google',
+        type: 'link',
+        url: 'https://www.google.com/search?q=%s',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>'
+      }
+    ]
+  }
+
+  let currentConfig = null
+
+  // Load Settings
+  chrome.storage.sync.get(['canvasToastConfig'], result => {
+    // Deep Merge Logic
+    const saved = result.canvasToastConfig || {}
+    currentConfig = {
+      style: {
+        ...defaultConfig.style,
+        ...(saved.style || {})
+      },
+      // If saved buttons exist and are not empty, use them. Otherwise use default.
+      buttons: (saved.buttons && saved.buttons.length > 0) ? saved.buttons : defaultConfig.buttons
+    }
+    renderUI()
+  })
+
+  function renderUI () {
+    // 1. Populate Style Inputs
+    elements.styleInputs.forEach(input => {
+      const key = input.dataset.key
+      if (currentConfig.style[key] !== undefined) {
+        input.value = currentConfig.style[key]
+        const display = document.getElementById(`val-${key}`)
+        if (display) display.textContent = currentConfig.style[key]
+      }
+    })
+
+    // 2. Populate Buttons
+    elements.buttonList.innerHTML = ''
+    currentConfig.buttons.forEach((btn, index) => {
+      const item = document.createElement('div')
+      item.className = 'btn-item'
+      let content = `
+    <div class="btn-header">
+      <span>Action ${index + 1}</span>
+      <span class="btn-remove" data-index="${index}">✖</span>
+    </div>
+    <select class="config-input type-select" data-field="type" data-index="${index}">
+      <option value="action" ${
+        btn.type === 'action' ? 'selected' : ''
+      }>System Action</option>
+      <option value="link" ${
+        btn.type === 'link' ? 'selected' : ''
+      }>Search / Link</option>
+    </select>
+  `
+
+      if (btn.type === 'action') {
+        content += `
+      <select class="config-input" data-field="action" data-index="${index}">
+        <option value="copy" ${
+          btn.action === 'copy' ? 'selected' : ''
+        }>Copy Text</option>
+        <option value="paste" ${
+          btn.action === 'paste' ? 'selected' : ''
+        }>Paste Text</option>
+      </select>
+    `
+      } else {
+        content += `
+      <input type="text" class="config-input" data-field="url" data-index="${index}" 
+             value="${
+               btn.url || ''
+             }" placeholder="https://google.com/search?q=%s">
+      <span class="helper-text">Use %s for selected text</span>
+    `
+      }
+
+      content += `
+    <span class="helper-text">SVG Icon Code:</span>
+    <textarea class="config-input" data-field="icon" data-index="${index}">${btn.icon}</textarea>
+  `
+      item.innerHTML = content
+      elements.buttonList.appendChild(item)
+    })
+
+    attachListeners()
+  }
+
+  function attachListeners () {
+    // Remove Button
+    document.querySelectorAll('.btn-remove').forEach(el => {
+      el.addEventListener('click', e => {
+        currentConfig.buttons.splice(e.target.dataset.index, 1)
+        renderUI()
+      })
+    })
+
+    // Button Config Inputs
+    document.querySelectorAll('.config-input').forEach(el => {
+      el.addEventListener('change', e => {
+        const idx = e.target.dataset.index
+        const field = e.target.dataset.field
+        const btn = currentConfig.buttons[idx]
+
+        if (field === 'type') {
+          btn.type = e.target.value
+          if (btn.type === 'link') {
+            btn.url = 'https://google.com/search?q=%s'
+            delete btn.action
+          }
+          if (btn.type === 'action') {
+            btn.action = 'copy'
+            delete btn.url
+          }
+          renderUI()
+        } else {
+          btn[field] = e.target.value
+        }
+      })
+    })
+
+    // Style Inputs
+    elements.styleInputs.forEach(input => {
+      input.addEventListener('input', e => {
+        const key = e.target.dataset.key
+        let val = e.target.value
+
+        if (input.type === 'range') {
+          val = parseFloat(val)
+          const display = document.getElementById(`val-${key}`)
+          if (display) display.textContent = val
+        }
+
+        currentConfig.style[key] = val
+      })
+    })
+  }
+
+  // Add New Button
+  elements.addBtn.addEventListener('click', () => {
+    currentConfig.buttons.push({
+      id: 'btn-' + Date.now(),
+      type: 'link',
+      url: 'https://',
+      // Consistent default new button icon
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>'
+    })
+    renderUI()
+  })
+
+  // Save Settings
+  elements.saveBtn.addEventListener('click', () => {
+    elements.saveBtn.textContent = 'Saving...'
+    chrome.storage.sync.set(
+      {
+        canvasToastConfig: currentConfig
+      },
+      () => {
+        elements.saveBtn.textContent = 'Save Changes'
+        elements.status.style.opacity = '1'
+        setTimeout(() => {
+          elements.status.style.opacity = '0'
+        }, 2000)
+      }
+    )
+  })
+})
+</file>
+</files>

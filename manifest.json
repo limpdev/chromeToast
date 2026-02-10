@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Toast - Floating Selection Menu",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A customizable floating action menu that appears when you select text.",
   "permissions": [
     "storage",

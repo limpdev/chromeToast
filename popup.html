@@ -18,7 +18,7 @@
     }
 
     body {
-      width: 350px;
+      width: 360px;
       margin: 0;
       padding: 16px;
       font-family: 'Segoe UI', system-ui, sans-serif;
@@ -57,13 +57,15 @@
       font-weight: 700;
       margin-bottom: 12px;
       display: block;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
     }
 
     .control-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
       font-size: 13px;
     }
 
@@ -71,10 +73,17 @@
       margin-bottom: 0;
     }
 
+    .control-col {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 13px;
+    }
+
     input[type="color"] {
       -webkit-appearance: none;
-      width: 24px;
-      height: 24px;
+      width: 28px;
+      height: 28px;
       border: none;
       border-radius: 4px;
       cursor: pointer;
@@ -82,7 +91,7 @@
     }
 
     input[type="range"] {
-      width: 120px;
+      width: 100px;
       height: 4px;
       background: var(--border);
       border-radius: 2px;
@@ -96,6 +105,22 @@
       background: var(--accent);
       border-radius: 50%;
       cursor: pointer;
+      margin-top: -5px;
+      /* Alignment fix */
+    }
+
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+    }
+
+    .value-display {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      width: 30px;
+      text-align: right;
     }
 
     /* Button List Styling */
@@ -205,6 +230,12 @@
       margin-bottom: 4px;
       display: block;
     }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
   </style>
 </head>
 
@@ -216,21 +247,62 @@
     Toast Configuration
   </h2>
 
+  <!-- Style Section -->
+
   <div class="section">
-    <span class="section-title">Appearance</span>
+    <span class="section-title">Visual Style</span>
     <div class="control-row">
-      <span>Background Color</span>
-      <input type="color" id="bgColor">
+      <span>Background</span>
+      <input type="color" id="bgColor" class="style-input" data-key="bgColor">
+    </div>
+    <div class="control-row">
+      <span>Accent Color</span>
+      <input type="color" id="hoverColor" class="style-input" data-key="hoverColor">
     </div>
     <div class="control-row">
       <span>Opacity</span>
-      <input type="range" id="bgOpacity" min="0.5" max="1" step="0.05">
-    </div>
-    <div class="control-row">
-      <span>Hover Accent</span>
-      <input type="color" id="hoverColor">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" id="bgOpacity" class="style-input" data-key="bgOpacity" min="0.5" max="1" step="0.05">
+        <span class="value-display" id="val-bgOpacity">0.95</span>
+      </div>
     </div>
   </div>
+
+  <!-- Animation Section (New) -->
+
+  <div class="section">
+    <span class="section-title">Animation & Interaction</span>
+    <div class="control-row">
+      <span>Anim Speed</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" id="animSpeed" class="style-input" data-key="animSpeed" min="0.05" max="0.5" step="0.05">
+        <span class="value-display" id="val-animSpeed">0.2</span>
+      </div>
+    </div>
+    <div class="control-row">
+      <span>Hover Scale</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" id="hoverScale" class="style-input" data-key="hoverScale" min="1.0" max="1.5" step="0.05">
+        <span class="value-display" id="val-hoverScale">1.15</span>
+      </div>
+    </div>
+    <div class="control-row">
+      <span>Active Click</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" id="activeScale" class="style-input" data-key="activeScale" min="0.5" max="1.0" step="0.05">
+        <span class="value-display" id="val-activeScale">0.95</span>
+      </div>
+    </div>
+    <div class="control-row">
+      <span>Icon Lift</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" id="iconLift" class="style-input" data-key="iconLift" min="0" max="10" step="1">
+        <span class="value-display" id="val-iconLift">3px</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions Section -->
 
   <div class="section">
     <span class="section-title">Actions & Links</span>
@@ -238,10 +310,13 @@
     <button id="addBtn" class="main-btn btn-secondary">+ Add Action</button>
   </div>
 
+
   <button id="save" class="main-btn btn-primary">Save Changes</button>
+
   <div id="status">Settings Saved!</div>
 
   <script src="popup.js"></script>
+
 </body>
 
 </html>

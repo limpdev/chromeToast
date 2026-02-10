@@ -25,18 +25,18 @@
   // --- Default Configuration ---
   const defaultConfig = {
     style: {
-      bgColor: '#0f172a',
+      bgColor: '#13161D',
       bgOpacity: 0.95,
-      hoverColor: '#3b82f6',
+      hoverColor: '#1B4F80',
       hoverOpacity: 0.2,
-      borderRadius: 12,
+      borderRadius: 15,
       buttonSize: 36,
       buttonSpacing: 6,
       padding: 6,
       iconSize: 20,
-      animSpeed: 0.2,
-      hoverScale: 1.15,
-      activeScale: 0.95,
+      animSpeed: 0.3,
+      hoverScale: 1.1,
+      activeScale: 0.90,
       iconLift: 3
     },
     buttons: [
@@ -45,13 +45,13 @@
         type: 'action',
         action: 'copy',
         // High contrast, filled icon for better visibility
-        icon: '<svg viewBox="0 0 24 24" fill="#e2e8f0" xmlns="http://www.w3.org/2000/svg"><path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"/></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="#d3d3d3" stroke="currentColor" stroke-width="1"><path d="M14 7c0-.932 0-1.398-.152-1.765a2 2 0 0 0-1.083-1.083C12.398 4 11.932 4 11 4H8c-1.886 0-2.828 0-3.414.586S4 6.114 4 8v3c0 .932 0 1.398.152 1.765a2 2 0 0 0 1.083 1.083C5.602 14 6.068 14 7 14"/><rect width="10" height="10" x="10" y="10" rx="2"/></g></svg>'
       },
       {
         id: 'google',
         type: 'link',
         url: 'https://www.google.com/search?q=%s',
-        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><g fill="#d3d3d3"><path fill="currentColor" fill-opacity="0.25" d="M63.453 67.749L50.725 55.017a2.998 2.998 0 1 1 4.24-4.24l12.73 12.732a2.998 2.998 0 1 1-4.242 4.24m-47.856-38.68a19.052 19.052 0 1 1 36.806 9.862a19.052 19.052 0 0 1-36.806-9.862"/><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" d="m47.445 47.498l3.28 3.28m0 4.239l12.728 12.732a2.998 2.998 0 0 0 4.241-4.24L54.966 50.777a2.998 2.998 0 1 0-4.241 4.24m-30.197-7.545a19.053 19.053 0 1 1 26.944-26.944a19.053 19.053 0 0 1-26.944 26.944" stroke-width="1"/></g></svg>'
       }
     ]
   }

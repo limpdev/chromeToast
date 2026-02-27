@@ -5,7 +5,6 @@
   "description": "A customizable floating action menu that appears when you select text.",
   "permissions": [
     "storage",
-    "clipboardRead",
     "clipboardWrite"
   ],
   "content_scripts": [
@@ -34,7 +33,7 @@
         "assets/*.png"
       ],
       "matches": [
-        "<all_urls>"
+        "chrome-extension://*/*"
       ]
     }
   ]

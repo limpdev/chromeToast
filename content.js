@@ -29,14 +29,14 @@
       bgOpacity: 0.95,
       hoverColor: '#1B4F80',
       hoverOpacity: 0.2,
-      borderRadius: 15,
-      buttonSize: 36,
+      borderRadius: 16,
+      buttonSize: 34,
       buttonSpacing: 6,
       padding: 6,
       iconSize: 20,
       animSpeed: 0.3,
       hoverScale: 1.1,
-      activeScale: 0.90,
+      activeScale: 0.9,
       iconLift: 3
     },
     buttons: [
@@ -45,13 +45,13 @@
         type: 'action',
         action: 'copy',
         // High contrast, filled icon for better visibility
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="#d3d3d3" stroke-width="1.5"><path d="M14 7c0-.932 0-1.398-.152-1.765a2 2 0 0 0-1.083-1.083C12.398 4 11.932 4 11 4H8c-1.886 0-2.828 0-3.414.586S4 6.114 4 8v3c0 .932 0 1.398.152 1.765a2 2 0 0 0 1.083 1.083C5.602 14 6.068 14 7 14"/><rect width="10" height="10" x="10" y="10" rx="2"/></g></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><path d="M14 7c0-.932 0-1.398-.152-1.765a2 2 0 0 0-1.083-1.083C12.398 4 11.932 4 11 4H8c-1.886 0-2.828 0-3.414.586S4 6.114 4 8v3c0 .932 0 1.398.152 1.765a2 2 0 0 0 1.083 1.083C5.602 14 6.068 14 7 14"/><rect width="10" height="10" x="10" y="10" rx="2"/></g></svg>'
       },
       {
         id: 'google',
         type: 'link',
         url: 'https://www.google.com/search?q=%s',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><g fill="#d3d3d3"><path fill="currentColor" fill-opacity="0.25" d="M63.453 67.749L50.725 55.017a2.998 2.998 0 1 1 4.24-4.24l12.73 12.732a2.998 2.998 0 1 1-4.242 4.24m-47.856-38.68a19.052 19.052 0 1 1 36.806 9.862a19.052 19.052 0 0 1-36.806-9.862"/><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" d="m47.445 47.498l3.28 3.28m0 4.239l12.728 12.732a2.998 2.998 0 0 0 4.241-4.24L54.966 50.777a2.998 2.998 0 1 0-4.241 4.24m-30.197-7.545a19.053 19.053 0 1 1 26.944-26.944a19.053 19.053 0 0 1-26.944 26.944" stroke-width="1"/></g></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><g fill="none"><path fill="#fff" fill-opacity="0.25" d="M63.453 67.749L50.725 55.017a2.998 2.998 0 1 1 4.24-4.24l12.73 12.732a2.998 2.998 0 1 1-4.242 4.24m-47.856-38.68a19.052 19.052 0 1 1 36.806 9.862a19.052 19.052 0 0 1-36.806-9.862"/><path stroke="#bbb" stroke-linecap="round" stroke-linejoin="round" d="m47.445 47.498l3.28 3.28m0 4.239l12.728 12.732a2.998 2.998 0 0 0 4.241-4.24L54.966 50.777a2.998 2.998 0 1 0-4.241 4.24m-30.197-7.545a19.053 19.053 0 1 1 26.944-26.944a19.053 19.053 0 0 1-26.944 26.944" stroke-width="2"/></g></svg>'
       }
     ]
   }
@@ -189,7 +189,8 @@
 
   function handleOutsideClick (e) {
     if (isVisible && e.target !== canvas) {
-      hideToast()
+      // Don't immediately hide — the mouseup handler will re-evaluate
+      // Only hide if there's no active text selection starting
     }
   }
 
@@ -244,7 +245,9 @@
   }
 
   function startLoop () {
-    if (!animationId) loop()
+    if (animationId) cancelAnimationFrame(animationId)
+    animationId = null
+    loop()
   }
 
   function loop () {
@@ -363,7 +366,7 @@
           by,
           currentBtnSize,
           currentBtnSize,
-          style.borderRadius / 2
+          style.borderRadius /* / 2 */
         )
         ctx.fill()
         ctx.globalAlpha = animState.opacity

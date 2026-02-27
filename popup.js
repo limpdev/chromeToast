@@ -74,51 +74,85 @@ document.addEventListener('DOMContentLoaded', () => {
     })
 
     // 2. Populate Buttons
+    if (!elements.buttonList) return
     elements.buttonList.innerHTML = ''
     currentConfig.buttons.forEach((btn, index) => {
       const item = document.createElement('div')
       item.className = 'btn-item'
-      let content = `
-    <div class="btn-header">
-      <span>Action ${index + 1}</span>
-      <span class="btn-remove" data-index="${index}">✖</span>
-    </div>
-    <select class="config-input type-select" data-field="type" data-index="${index}">
-      <option value="action" ${
-        btn.type === 'action' ? 'selected' : ''
-      }>System Action</option>
-      <option value="link" ${
-        btn.type === 'link' ? 'selected' : ''
-      }>Search / Link</option>
-    </select>
-  `
+
+      // Header
+      const header = document.createElement('div')
+      header.className = 'btn-header'
+      const headerLabel = document.createElement('span')
+      headerLabel.textContent = `Action ${index + 1}`
+      const removeBtn = document.createElement('span')
+      removeBtn.className = 'btn-remove'
+      removeBtn.dataset.index = index
+      removeBtn.textContent = '✖'
+      header.appendChild(headerLabel)
+      header.appendChild(removeBtn)
+      item.appendChild(header)
+
+      // Type Select
+      const typeSelect = document.createElement('select')
+      typeSelect.className = 'config-input type-select'
+      typeSelect.dataset.field = 'type'
+      typeSelect.dataset.index = index
+      const actionOption = document.createElement('option')
+      actionOption.value = 'action'
+      actionOption.textContent = 'System Action'
+      actionOption.selected = btn.type === 'action'
+      const linkOption = document.createElement('option')
+      linkOption.value = 'link'
+      linkOption.textContent = 'Search / Link'
+      linkOption.selected = btn.type === 'link'
+      typeSelect.appendChild(actionOption)
+      typeSelect.appendChild(linkOption)
+      item.appendChild(typeSelect)
 
       if (btn.type === 'action') {
-        content += `
-      <select class="config-input" data-field="action" data-index="${index}">
-        <option value="copy" ${
-          btn.action === 'copy' ? 'selected' : ''
-        }>Copy Text</option>
-        <option value="paste" ${
-          btn.action === 'paste' ? 'selected' : ''
-        }>Paste Text</option>
-      </select>
-    `
+      const actionSelect = document.createElement('select')
+      actionSelect.className = 'config-input'
+      actionSelect.dataset.field = 'action'
+      actionSelect.dataset.index = index
+      const copyOpt = document.createElement('option')
+      copyOpt.value = 'copy'
+      copyOpt.textContent = 'Copy Text'
+      copyOpt.selected = btn.action === 'copy'
+      const pasteOpt = document.createElement('option')
+      pasteOpt.value = 'paste'
+      pasteOpt.textContent = 'Paste Text'
+      pasteOpt.selected = btn.action === 'paste'
+      actionSelect.appendChild(copyOpt)
+      actionSelect.appendChild(pasteOpt)
+      item.appendChild(actionSelect)
       } else {
-        content += `
-      <input type="text" class="config-input" data-field="url" data-index="${index}" 
-             value="${
-               btn.url || ''
-             }" placeholder="https://google.com/search?q=%s">
-      <span class="helper-text">Use %s for selected text</span>
-    `
+      const urlInput = document.createElement('input')
+      urlInput.type = 'text'
+      urlInput.className = 'config-input'
+      urlInput.dataset.field = 'url'
+      urlInput.dataset.index = index
+      urlInput.value = btn.url || ''
+      urlInput.placeholder = 'https://google.com/search?q=%s'
+      item.appendChild(urlInput)
+      const urlHelper = document.createElement('span')
+      urlHelper.className = 'helper-text'
+      urlHelper.textContent = 'Use %s for selected text'
+      item.appendChild(urlHelper)
       }
 
-      content += `
-    <span class="helper-text">SVG Icon Code:</span>
-    <textarea class="config-input" data-field="icon" data-index="${index}">${btn.icon}</textarea>
-  `
-      item.innerHTML = content
+      // Icon textarea
+      const iconHelper = document.createElement('span')
+      iconHelper.className = 'helper-text'
+      iconHelper.textContent = 'SVG Icon Code:'
+      item.appendChild(iconHelper)
+      const iconArea = document.createElement('textarea')
+      iconArea.className = 'config-input'
+      iconArea.dataset.field = 'icon'
+      iconArea.dataset.index = index
+      iconArea.textContent = btn.icon
+      item.appendChild(iconArea)
+
       elements.buttonList.appendChild(item)
     })
 

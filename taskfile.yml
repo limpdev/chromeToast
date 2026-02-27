@@ -9,5 +9,5 @@ tasks:
   sum:
     desc: run repomix
     cmds:
-      - repomix --include "**/*.json,**/*.js,**/*.css,**/*.html" --output "toast.xml"
+      - repomix --include "**/*.json,**/*.js,**/*.css,**/*.html" --output "./docs/toast.xml"
     silent: true

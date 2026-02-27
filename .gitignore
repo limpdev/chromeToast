@@ -8,6 +8,8 @@ pids
 *.pid
 *.seed
 *.pid.lock
+docs/
+dist/
 
 # Logs & environment
 logs

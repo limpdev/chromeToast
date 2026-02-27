@@ -143,3 +143,7 @@ The build script will:
 ## License
 
 MIT
+
+## Privacy Policy
+
+I will __**NOT**__ collect, nor sell any data. In fact, none shall be collected period  all of it ought to remain local!

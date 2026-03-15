@@ -11,3 +11,8 @@ tasks:
     cmds:
       - repomix --include "**/*.json,**/*.js,**/*.css,**/*.html" --output "./docs/toast.xml"
     silent: true
+  pack:
+    desc: runs build.js, an automated build+zip tool
+    cmds:
+      - node build.js
+    silent: true

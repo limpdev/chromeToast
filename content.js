@@ -1,8 +1,9 @@
-// content.js - Refined & Robust
+// content.js - Toast Selection Popup (Hybrid DOM + Canvas)
 ;(function () {
   'use strict'
+
   // --- Global State ---
-  let canvas, ctx
+  let toastEl, canvas, ctx
   let currentSelection = ''
   let selectionRange = null
   let isVisible = false
@@ -10,13 +11,12 @@
   let buttons = []
   let loadedIcons = {}
   let iconsReady = false
-  let isMouseDown = false // Track click state for active animation
+  let isMouseDown = false
 
   // Animation State
   const animState = {
-    toastHover: 0,
-    buttonHovers: [], // Array of floats (0 to 1)
-    buttonActive: [], // Array of floats (0 to 1) for click effect
+    buttonHovers: [],
+    buttonActive: [],
     opacity: 0,
     hoveredButtonIndex: -1,
     scale: 0.8
@@ -25,17 +25,17 @@
   // --- Default Configuration ---
   const defaultConfig = {
     style: {
-      bgColor: '#13161D',
-      bgOpacity: 0.95,
-      hoverColor: '#1B4F80',
+      bgColor: '#090b10',
+      bgOpacity: 0.75,
+      hoverColor: '#57595c',
       hoverOpacity: 0.2,
       borderRadius: 16,
       buttonSize: 34,
       buttonSpacing: 6,
       padding: 6,
       iconSize: 20,
-      animSpeed: 0.3,
-      hoverScale: 1.1,
+      animSpeed: 0.2,
+      hoverScale: 1.15,
       activeScale: 0.9,
       iconLift: 3
     },
@@ -44,14 +44,13 @@
         id: 'copy',
         type: 'action',
         action: 'copy',
-        // High contrast, filled icon for better visibility
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><path d="M14 7c0-.932 0-1.398-.152-1.765a2 2 0 0 0-1.083-1.083C12.398 4 11.932 4 11 4H8c-1.886 0-2.828 0-3.414.586S4 6.114 4 8v3c0 .932 0 1.398.152 1.765a2 2 0 0 0 1.083 1.083C5.602 14 6.068 14 7 14"/><rect width="10" height="10" x="10" y="10" rx="2"/></g></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.556 13.218a2.67 2.67 0 01-3.774-3.774l2.359-2.36a2.67 2.67 0 013.628-.135m-.325-3.167a2.669 2.669 0 113.774 3.774l-2.359 2.36a2.67 2.67 0 01-3.628.135"/><path d="M10.5 3c-3.287 0-4.931 0-6.037.908a4 4 0 00-.555.554C3 5.57 3 7.212 3 10.5V13c0 3.771 0 5.657 1.172 6.828S7.229 21 11 21h2.5c3.287 0 4.931 0 6.038-.908q.304-.25.554-.554C21 18.43 21 16.788 21 13.5"/></g></svg>'
       },
       {
         id: 'google',
         type: 'link',
         url: 'https://www.google.com/search?q=%s',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><g fill="none"><path fill="#fff" fill-opacity="0.25" d="M63.453 67.749L50.725 55.017a2.998 2.998 0 1 1 4.24-4.24l12.73 12.732a2.998 2.998 0 1 1-4.242 4.24m-47.856-38.68a19.052 19.052 0 1 1 36.806 9.862a19.052 19.052 0 0 1-36.806-9.862"/><path stroke="#bbb" stroke-linecap="round" stroke-linejoin="round" d="m47.445 47.498l3.28 3.28m0 4.239l12.728 12.732a2.998 2.998 0 0 0 4.241-4.24L54.966 50.777a2.998 2.998 0 1 0-4.241 4.24m-30.197-7.545a19.053 19.053 0 1 1 26.944-26.944a19.053 19.053 0 0 1-26.944 26.944" stroke-width="2"/></g></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5"><circle cx="11" cy="11" r="6"/><path stroke-linecap="round" d="M11 8a3 3 0 00-3 3m12 9l-3-3"/></g></svg>'
       }
     ]
   }
@@ -62,7 +61,7 @@
   function init () {
     chrome.storage.sync.get(['canvasToastConfig'], result => {
       applyConfig(result.canvasToastConfig)
-      setupCanvas()
+      setupDOM()
       loadIcons()
       attachEvents()
     })
@@ -70,6 +69,7 @@
       if (changes.canvasToastConfig) {
         applyConfig(changes.canvasToastConfig.newValue)
         loadIcons()
+        applyWrapperStyles()
         if (isVisible) requestAnimationFrame(draw)
       }
     })
@@ -77,32 +77,60 @@
 
   function applyConfig (newConfig) {
     if (!newConfig) return
-    // If the saved config has NO buttons (broken state), revert to default buttons
     if (!newConfig.buttons || newConfig.buttons.length === 0) {
       config.buttons = defaultConfig.buttons
     } else {
       config.buttons = newConfig.buttons
     }
-
     if (newConfig.style) {
       config.style = { ...defaultConfig.style, ...newConfig.style }
     }
   }
 
-  function setupCanvas () {
-    if (canvas && document.body.contains(canvas)) {
-      document.body.removeChild(canvas)
+  // --- DOM Setup (replaces old setupCanvas) ---
+  function setupDOM () {
+    if (toastEl && document.body.contains(toastEl)) {
+      document.body.removeChild(toastEl)
     }
-    canvas = document.createElement('canvas')
-    Object.assign(canvas.style, {
+
+    // Wrapper div: provides blur, border, shadow, and tight bounding box
+    toastEl = document.createElement('div')
+    Object.assign(toastEl.style, {
       position: 'fixed',
-      pointerEvents: 'none',
       zIndex: '2147483647',
       display: 'none',
-      filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.2))'
+      pointerEvents: 'none',
+      // Frosted glass effect
+      backdropFilter: 'blur(16px)',
+      webkitBackdropFilter: 'blur(16px)',
+      border: '1px solid rgba(255, 255, 255, 0.12)',
+      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
+      // Layout & animation
+      transformOrigin: 'center center',
+      overflow: 'hidden',
+      willChange: 'transform, opacity',
+      opacity: '0',
+      transform: 'scale(0.8)'
     })
-    document.body.appendChild(canvas)
+
+    // Canvas: only for rendering icons and hover highlights
+    canvas = document.createElement('canvas')
+    Object.assign(canvas.style, {
+      display: 'block',
+      pointerEvents: 'none'
+    })
+
+    toastEl.appendChild(canvas)
+    document.body.appendChild(toastEl)
     ctx = canvas.getContext('2d', { alpha: true })
+  }
+
+  function applyWrapperStyles () {
+    if (!toastEl) return
+    const { style } = config
+    const bgRgb = hexToRgb(style.bgColor)
+    toastEl.style.background = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`
+    toastEl.style.borderRadius = style.borderRadius + 'px'
   }
 
   function attachEvents () {
@@ -112,13 +140,13 @@
     canvas.addEventListener('mousemove', handleMouseMove)
     canvas.addEventListener('mousedown', handleCanvasDown)
     canvas.addEventListener('mouseup', handleCanvasUp)
-    canvas.addEventListener('mouseleave', () => {
+    toastEl.addEventListener('mouseleave', () => {
       animState.hoveredButtonIndex = -1
       isMouseDown = false
     })
   }
 
-  // --- Logic ---
+  // --- Icon Loading ---
   function loadIcons () {
     loadedIcons = {}
     iconsReady = false
@@ -128,16 +156,13 @@
       iconsReady = true
       return
     }
-
     animState.buttonHovers = new Array(totalIcons).fill(0)
     animState.buttonActive = new Array(totalIcons).fill(0)
-
     config.buttons.forEach(btn => {
       const img = new Image()
       let src = btn.icon || ''
       if (src.trim().startsWith('<svg')) {
         try {
-          // Explicitly setting charset to utf-8 helps with some SVG parsing issues
           src =
             'data:image/svg+xml;charset=utf-8;base64,' +
             window.btoa(unescape(encodeURIComponent(src)))
@@ -165,8 +190,9 @@
     }
   }
 
+  // --- Event Handlers ---
   function handleSelectionChange (e) {
-    if (e.target === canvas) return
+    if (toastEl && toastEl.contains(e.target)) return
     setTimeout(() => {
       const sel = window.getSelection()
       if (sel.rangeCount === 0) return
@@ -188,9 +214,8 @@
   }
 
   function handleOutsideClick (e) {
-    if (isVisible && e.target !== canvas) {
+    if (isVisible && toastEl && !toastEl.contains(e.target)) {
       // Don't immediately hide — the mouseup handler will re-evaluate
-      // Only hide if there's no active text selection starting
     }
   }
 
@@ -198,35 +223,46 @@
     if (isVisible) hideToast()
   }
 
+  // --- Toast Lifecycle ---
   function showToast (rect) {
     const { padding, buttonSize, buttonSpacing } = config.style
     const count = config.buttons.length
     const totalWidth =
       padding * 2 + buttonSize * count + buttonSpacing * (count - 1)
     const totalHeight = padding * 2 + buttonSize
-    const buffer = 50
+
     const dpr = window.devicePixelRatio || 1
 
-    canvas.style.width = totalWidth + buffer * 2 + 'px'
-    canvas.style.height = totalHeight + buffer * 2 + 'px'
-    canvas.width = (totalWidth + buffer * 2) * dpr
-    canvas.height = (totalHeight + buffer * 2) * dpr
-
+    // Size canvas to exact toast content (no buffer)
+    canvas.style.width = totalWidth + 'px'
+    canvas.style.height = totalHeight + 'px'
+    canvas.width = totalWidth * dpr
+    canvas.height = totalHeight * dpr
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.scale(dpr, dpr)
 
+    // Size wrapper to match canvas exactly
+    toastEl.style.width = totalWidth + 'px'
+    toastEl.style.height = totalHeight + 'px'
+    applyWrapperStyles()
+
+    // Position above selection, centered
     let left = rect.left + rect.width / 2 - totalWidth / 2
     let top = rect.top - totalHeight - 16
-
     if (top < 0) top = rect.bottom + 16
     if (left < 10) left = 10
     if (left + totalWidth > window.innerWidth - 10) {
       left = window.innerWidth - totalWidth - 10
     }
 
-    canvas.style.left = left - buffer + 'px'
-    canvas.style.top = top - buffer + 'px'
-    canvas.style.display = 'block'
+    // Reset to invisible before showing (prevents flash on re-show)
+    toastEl.style.opacity = '0'
+    toastEl.style.transform = 'scale(0.8)'
+
+    toastEl.style.left = left + 'px'
+    toastEl.style.top = top + 'px'
+    toastEl.style.display = 'block'
+    toastEl.style.pointerEvents = 'auto'
     canvas.style.pointerEvents = 'auto'
 
     if (!isVisible) {
@@ -239,11 +275,13 @@
 
   function hideToast () {
     isVisible = false
+    toastEl.style.pointerEvents = 'none'
     canvas.style.pointerEvents = 'none'
     animState.hoveredButtonIndex = -1
     isMouseDown = false
   }
 
+  // --- Animation Loop ---
   function startLoop () {
     if (animationId) cancelAnimationFrame(animationId)
     animationId = null
@@ -251,9 +289,9 @@
   }
 
   function loop () {
-    if (!isVisible && Math.abs(animState.opacity) < 0.01) {
+    if (!isVisible && animState.opacity < 0.01) {
       animationId = null
-      canvas.style.display = 'none'
+      toastEl.style.display = 'none'
       return
     }
     updateState()
@@ -277,13 +315,16 @@
   }
 
   function updateState () {
-    const { animSpeed } = config.style
-    const speed = animSpeed || 0.2
+    const speed = config.style.animSpeed || 0.2
     const targetOpacity = isVisible ? 1 : 0
     const targetScale = isVisible ? 1 : 0.9
 
     animState.opacity = lerp(animState.opacity, targetOpacity, speed)
     animState.scale = lerp(animState.scale, targetScale, speed)
+
+    // Entrance/exit animation applied via CSS on the wrapper element
+    toastEl.style.opacity = animState.opacity
+    toastEl.style.transform = `scale(${animState.scale})`
 
     config.buttons.forEach((_, i) => {
       const isHover = animState.hoveredButtonIndex === i
@@ -293,7 +334,6 @@
         hoverTarget,
         speed * 1.5
       )
-
       const isActive = isHover && isMouseDown
       const activeTarget = isActive ? 1 : 0
       animState.buttonActive[i] = lerp(
@@ -306,39 +346,20 @@
 
   function draw () {
     const { style, buttons: btnConfig } = config
-    const buffer = 50
-    const count = btnConfig.length
-    const totalW =
-      style.padding * 2 +
-      style.buttonSize * count +
-      style.buttonSpacing * (count - 1)
-    const totalH = style.padding * 2 + style.buttonSize
     const dpr = window.devicePixelRatio || 1
 
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
-    if (animState.opacity < 0.01) return
 
-    ctx.save()
-    const cx = buffer + totalW / 2
-    const cy = buffer + totalH / 2
-    ctx.translate(cx, cy)
-    ctx.scale(animState.scale, animState.scale)
-    ctx.translate(-cx, -cy)
-    ctx.globalAlpha = animState.opacity
-
-    const bgRgb = hexToRgb(style.bgColor)
-    ctx.fillStyle = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`
-    roundRect(ctx, buffer, buffer, totalW, totalH, style.borderRadius)
-    ctx.fill()
+    // Background, border, blur, and shadow are all handled by
+    // the wrapper div via CSS. Canvas only draws interactive content.
 
     buttons = []
-    let x = buffer + style.padding
-    const y = buffer + style.padding
+    let x = style.padding
+    const y = style.padding
 
     btnConfig.forEach((btn, i) => {
       const hoverVal = animState.buttonHovers[i]
       const activeVal = animState.buttonActive[i]
-
       const targetScale =
         1 +
         hoverVal * (style.hoverScale - 1) -
@@ -357,38 +378,40 @@
       const bx = x + offset
       const by = y + offset
 
+      // Hover highlight
       if (hoverVal > 0.01) {
         ctx.fillStyle = style.hoverColor
-        ctx.globalAlpha = animState.opacity * style.hoverOpacity * hoverVal
+        ctx.globalAlpha = style.hoverOpacity * hoverVal
         roundRect(
           ctx,
           bx,
           by,
           currentBtnSize,
           currentBtnSize,
-          style.borderRadius /* / 2 */
+          style.borderRadius
         )
         ctx.fill()
-        ctx.globalAlpha = animState.opacity
+        ctx.globalAlpha = 1
       }
 
+      // Icon
       const iconImg = loadedIcons[btn.id]
       if (iconImg && iconsReady) {
         const lift = hoverVal * -1 * (style.iconLift || 0)
         const scaledIconSize = style.iconSize * targetScale
         const ix = x + (style.buttonSize - scaledIconSize) / 2
         const iy = y + (style.buttonSize - scaledIconSize) / 2 + lift
-
         ctx.filter =
           hoverVal > 0.01 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
         ctx.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
         ctx.filter = 'none'
       }
+
       x += style.buttonSize + style.buttonSpacing
     })
-    ctx.restore()
   }
 
+  // --- Mouse Interaction ---
   function handleMouseMove (e) {
     if (!isVisible) return
     const rect = canvas.getBoundingClientRect()
@@ -396,7 +419,6 @@
     const my = e.clientY - rect.top
     let cursor = 'default'
     let hoveredIndex = -1
-
     buttons.forEach((btn, i) => {
       if (
         mx >= btn.x &&
@@ -424,7 +446,6 @@
     const btn = buttons[animState.hoveredButtonIndex]
     if (!btn) return
     const { type, url, action } = btn.data
-
     if (type === 'link') {
       const targetUrl = url.includes('%s')
         ? url.replace('%s', encodeURIComponent(currentSelection))
@@ -452,6 +473,7 @@
     hideToast()
   }
 
+  // --- Drawing Utilities ---
   function roundRect (ctx, x, y, w, h, r) {
     if (w < 2 * r) r = w / 2
     if (h < 2 * r) r = h / 2
@@ -464,6 +486,7 @@
     ctx.closePath()
   }
 
+  // --- Bootstrap ---
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init)
   } else {

@@ -1,5 +1,5 @@
 // content.js - Toast Selection Popup (Hybrid DOM + Canvas)
-;(function () {
+(function () {
   'use strict'
 
   // --- Global State ---
@@ -22,19 +22,48 @@
     scale: 0.8
   }
 
+  // Spring state: each animated value gets { val, vel }
+  const springs = {
+    opacity: { val: 0, vel: 0 },
+    scale: { val: 0.8, vel: 0 },
+    buttons: [] // populated in loadIcons: [{ hover: {val,vel}, active: {val,vel} }]
+  }
+
+  // --- Spring Physics ---
+  // stiffness: how fast it snaps toward target
+  // damping:   how much it resists oscillation (>1 = overdamped/no bounce, ~0.6-0.8 = subtle bounce)
+  const SPRING_STIFFNESS = 280
+  const SPRING_DAMPING = 22
+  const HOVER_STIFFNESS = 320
+  const HOVER_DAMPING = 26
+
+  let lastTime = null
+
+  function stepSpring(spring, target, stiffness, damping, dt) {
+    const force = -stiffness * (spring.val - target)
+    const dampen = -damping * spring.vel
+    spring.vel += (force + dampen) * dt
+    spring.val += spring.vel * dt
+    // Snap to rest when close enough
+    if (Math.abs(spring.val - target) < 0.001 && Math.abs(spring.vel) < 0.001) {
+      spring.val = target
+      spring.vel = 0
+    }
+  }
+
   // --- Default Configuration ---
   const defaultConfig = {
     style: {
-      bgColor: '#090b10',
+      bgColor: '#1b1c1d',
       bgOpacity: 0.75,
-      hoverColor: '#57595c',
+      hoverColor: '#404040',
       hoverOpacity: 0.2,
-      borderRadius: 16,
-      buttonSize: 34,
-      buttonSpacing: 6,
+      borderRadius: 13,
+      // buttonSize: 28,
+      // animSpeed: 0.15,
       padding: 6,
-      iconSize: 20,
-      animSpeed: 0.2,
+      iconSize: 18,
+      buttonSpacing: 4,
       hoverScale: 1.15,
       activeScale: 0.9,
       iconLift: 3
@@ -57,8 +86,20 @@
 
   let config = JSON.parse(JSON.stringify(defaultConfig))
 
+  // --- hexToRgb (memoized) ---
+  const hexToRgbCache = new Map()
+  function hexToRgb(hex) {
+    if (hexToRgbCache.has(hex)) return hexToRgbCache.get(hex)
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+    const rgb = result
+      ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
+      : { r: 0, g: 0, b: 0 }
+    hexToRgbCache.set(hex, rgb)
+    return rgb
+  }
+
   // --- Initialization ---
-  function init () {
+  function init() {
     chrome.storage.sync.get(['canvasToastConfig'], result => {
       applyConfig(result.canvasToastConfig)
       setupDOM()
@@ -75,57 +116,48 @@
     })
   }
 
-  function applyConfig (newConfig) {
+  function applyConfig(newConfig) {
     if (!newConfig) return
-    if (!newConfig.buttons || newConfig.buttons.length === 0) {
-      config.buttons = defaultConfig.buttons
-    } else {
-      config.buttons = newConfig.buttons
-    }
+    config.buttons = (newConfig.buttons && newConfig.buttons.length > 0)
+      ? newConfig.buttons
+      : defaultConfig.buttons
     if (newConfig.style) {
       config.style = { ...defaultConfig.style, ...newConfig.style }
     }
   }
 
-  // --- DOM Setup (replaces old setupCanvas) ---
-  function setupDOM () {
+  // --- DOM Setup ---
+  function setupDOM() {
     if (toastEl && document.body.contains(toastEl)) {
       document.body.removeChild(toastEl)
     }
-
-    // Wrapper div: provides blur, border, shadow, and tight bounding box
     toastEl = document.createElement('div')
     Object.assign(toastEl.style, {
       position: 'fixed',
       zIndex: '2147483647',
       display: 'none',
       pointerEvents: 'none',
-      // Frosted glass effect
       backdropFilter: 'blur(16px)',
       webkitBackdropFilter: 'blur(16px)',
-      border: '1px solid rgba(255, 255, 255, 0.12)',
+      border: '0.5px solid rgba(255, 255, 255, 0.12)',
       boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
-      // Layout & animation
       transformOrigin: 'center center',
       overflow: 'hidden',
       willChange: 'transform, opacity',
       opacity: '0',
-      transform: 'scale(0.8)'
+      transform: 'scale(0.7)'
     })
-
-    // Canvas: only for rendering icons and hover highlights
     canvas = document.createElement('canvas')
     Object.assign(canvas.style, {
       display: 'block',
       pointerEvents: 'none'
     })
-
     toastEl.appendChild(canvas)
     document.body.appendChild(toastEl)
     ctx = canvas.getContext('2d', { alpha: true })
   }
 
-  function applyWrapperStyles () {
+  function applyWrapperStyles() {
     if (!toastEl) return
     const { style } = config
     const bgRgb = hexToRgb(style.bgColor)
@@ -133,7 +165,7 @@
     toastEl.style.borderRadius = style.borderRadius + 'px'
   }
 
-  function attachEvents () {
+  function attachEvents() {
     document.addEventListener('mouseup', handleSelectionChange)
     document.addEventListener('mousedown', handleOutsideClick)
     document.addEventListener('scroll', handleScroll, { passive: true })
@@ -146,56 +178,64 @@
     })
   }
 
-  // --- Icon Loading ---
-  function loadIcons () {
-    loadedIcons = {}
-    iconsReady = false
-    let loadedCount = 0
-    const totalIcons = config.buttons.length
-    if (totalIcons === 0) {
-      iconsReady = true
-      return
-    }
-    animState.buttonHovers = new Array(totalIcons).fill(0)
-    animState.buttonActive = new Array(totalIcons).fill(0)
-    config.buttons.forEach(btn => {
+  // --- Icon Loading (Promise.all) ---
+  function svgToDataUri(svgStr) {
+    return 'data:image/svg+xml;charset=utf-8;base64,' +
+      window.btoa(unescape(encodeURIComponent(svgStr)))
+  }
+
+  function loadSingleIcon(btn) {
+    return new Promise(resolve => {
       const img = new Image()
       let src = btn.icon || ''
       if (src.trim().startsWith('<svg')) {
-        try {
-          src =
-            'data:image/svg+xml;charset=utf-8;base64,' +
-            window.btoa(unescape(encodeURIComponent(src)))
-        } catch (e) {
+        try { src = svgToDataUri(src) } catch (e) {
           console.error('Icon encoding failed', e)
+          return resolve(null)
         }
       }
-      img.onload = () => {
-        loadedIcons[btn.id] = img
-        loadedCount++
-        checkReady()
-      }
+      img.onload = () => resolve({ id: btn.id, img })
       img.onerror = () => {
         console.warn(`Failed to load icon for ${btn.id}`)
-        loadedCount++
-        checkReady()
+        resolve(null)
       }
       img.src = src
     })
-    function checkReady () {
-      if (loadedCount === totalIcons) {
-        iconsReady = true
-        if (isVisible) requestAnimationFrame(draw)
-      }
-    }
   }
 
-  // --- Event Handlers ---
-  function handleSelectionChange (e) {
+  function loadIcons() {
+    loadedIcons = {}
+    iconsReady = false
+    const total = config.buttons.length
+
+    // Reset spring states to match button count
+    springs.buttons = config.buttons.map(() => ({
+      hover: { val: 0, vel: 0 },
+      active: { val: 0, vel: 0 }
+    }))
+    // Keep animState arrays in sync (still used for hit-testing)
+    animState.buttonHovers = new Array(total).fill(0)
+    animState.buttonActive = new Array(total).fill(0)
+
+    if (total === 0) { iconsReady = true; return }
+
+    Promise.all(config.buttons.map(loadSingleIcon)).then(results => {
+      results.forEach(r => { if (r) loadedIcons[r.id] = r.img })
+      iconsReady = true
+      if (isVisible) requestAnimationFrame(draw)
+    })
+  }
+
+  // --- Selection Debounce (rAF-based) ---
+  let selectionRafId = null
+
+  function handleSelectionChange(e) {
     if (toastEl && toastEl.contains(e.target)) return
-    setTimeout(() => {
+    if (selectionRafId) cancelAnimationFrame(selectionRafId)
+    selectionRafId = requestAnimationFrame(() => {
+      selectionRafId = null
       const sel = window.getSelection()
-      if (sel.rangeCount === 0) return
+      if (!sel || sel.rangeCount === 0) return
       const text = sel.toString().trim()
       if (text.length > 0) {
         currentSelection = text
@@ -210,30 +250,28 @@
       } else {
         if (!isMouseDown) hideToast()
       }
-    }, 10)
+    })
   }
 
-  function handleOutsideClick (e) {
-    if (isVisible && toastEl && !toastEl.contains(e.target)) {
-      // Don't immediately hide — the mouseup handler will re-evaluate
-    }
+  function handleOutsideClick(e) {
+    // Don't immediately hide — the mouseup handler will re-evaluate
+    if (isVisible && toastEl && !toastEl.contains(e.target)) { }
   }
 
-  function handleScroll () {
+  function handleScroll() {
     if (isVisible) hideToast()
   }
 
   // --- Toast Lifecycle ---
-  function showToast (rect) {
-    const { padding, buttonSize, buttonSpacing } = config.style
+  function showToast(rect) {
+    const { style } = config
+    const baseBtnSize = style.iconSize + style.iconPadding * 2
     const count = config.buttons.length
     const totalWidth =
-      padding * 2 + buttonSize * count + buttonSpacing * (count - 1)
-    const totalHeight = padding * 2 + buttonSize
-
+      style.padding * 2 + baseBtnSize * count + style.buttonSpacing * (count - 1)
+    const totalHeight = style.padding * 2 + baseBtnSize
     const dpr = window.devicePixelRatio || 1
 
-    // Size canvas to exact toast content (no buffer)
     canvas.style.width = totalWidth + 'px'
     canvas.style.height = totalHeight + 'px'
     canvas.width = totalWidth * dpr
@@ -241,23 +279,15 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.scale(dpr, dpr)
 
-    // Size wrapper to match canvas exactly
     toastEl.style.width = totalWidth + 'px'
     toastEl.style.height = totalHeight + 'px'
     applyWrapperStyles()
 
-    // Position above selection, centered
     let left = rect.left + rect.width / 2 - totalWidth / 2
     let top = rect.top - totalHeight - 16
     if (top < 0) top = rect.bottom + 16
     if (left < 10) left = 10
-    if (left + totalWidth > window.innerWidth - 10) {
-      left = window.innerWidth - totalWidth - 10
-    }
-
-    // Reset to invisible before showing (prevents flash on re-show)
-    toastEl.style.opacity = '0'
-    toastEl.style.transform = 'scale(0.8)'
+    if (left + totalWidth > window.innerWidth - 10) left = window.innerWidth - totalWidth - 10
 
     toastEl.style.left = left + 'px'
     toastEl.style.top = top + 'px'
@@ -267,13 +297,19 @@
 
     if (!isVisible) {
       isVisible = true
-      animState.opacity = 0
-      animState.scale = 0.8
+      // Kick springs from their collapsed state
+      springs.opacity.val = 0
+      springs.opacity.vel = 0
+      springs.scale.val = 0.8
+      springs.scale.vel = 0
+      toastEl.style.opacity = '0'
+      toastEl.style.transform = 'scale(0.8)'
+      lastTime = null
       startLoop()
     }
   }
 
-  function hideToast () {
+  function hideToast() {
     isVisible = false
     toastEl.style.pointerEvents = 'none'
     canvas.style.pointerEvents = 'none'
@@ -282,76 +318,67 @@
   }
 
   // --- Animation Loop ---
-  function startLoop () {
+  function startLoop() {
     if (animationId) cancelAnimationFrame(animationId)
     animationId = null
-    loop()
+    animationId = requestAnimationFrame(loop)
   }
 
-  function loop () {
-    if (!isVisible && animState.opacity < 0.01) {
+  function loop(timestamp) {
+    // Compute dt in seconds, clamped to avoid spiral of death on tab re-focus
+    if (!lastTime) lastTime = timestamp
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
+    lastTime = timestamp
+
+    const opacityAtRest = Math.abs(springs.opacity.val) < 0.001 && Math.abs(springs.opacity.vel) < 0.001
+    const scaleAtRest = Math.abs(springs.scale.val - (isVisible ? 1 : 0.9)) < 0.001
+
+    if (!isVisible && opacityAtRest && springs.opacity.val < 0.001) {
       animationId = null
       toastEl.style.display = 'none'
       return
     }
-    updateState()
+
+    updateState(dt)
     draw()
     animationId = requestAnimationFrame(loop)
   }
 
-  function lerp (start, end, t) {
-    return start * (1 - t) + end * t
-  }
-
-  function hexToRgb (hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-    return result
-      ? {
-          r: parseInt(result[1], 16),
-          g: parseInt(result[2], 16),
-          b: parseInt(result[3], 16)
-        }
-      : { r: 0, g: 0, b: 0 }
-  }
-
-  function updateState () {
-    const speed = config.style.animSpeed || 0.2
+  function updateState(dt) {
     const targetOpacity = isVisible ? 1 : 0
     const targetScale = isVisible ? 1 : 0.9
 
-    animState.opacity = lerp(animState.opacity, targetOpacity, speed)
-    animState.scale = lerp(animState.scale, targetScale, speed)
+    stepSpring(springs.opacity, targetOpacity, SPRING_STIFFNESS, SPRING_DAMPING, dt)
+    stepSpring(springs.scale, targetScale, SPRING_STIFFNESS, SPRING_DAMPING, dt)
 
-    // Entrance/exit animation applied via CSS on the wrapper element
-    toastEl.style.opacity = animState.opacity
-    toastEl.style.transform = `scale(${animState.scale})`
+    toastEl.style.opacity = springs.opacity.val
+    toastEl.style.transform = `scale(${springs.scale.val})`
+
+    // Sync legacy animState for draw() compatibility
+    animState.opacity = springs.opacity.val
+    animState.scale = springs.scale.val
 
     config.buttons.forEach((_, i) => {
+      const sb = springs.buttons[i]
+      if (!sb) return
       const isHover = animState.hoveredButtonIndex === i
-      const hoverTarget = isHover ? 1 : 0
-      animState.buttonHovers[i] = lerp(
-        animState.buttonHovers[i] || 0,
-        hoverTarget,
-        speed * 1.5
-      )
       const isActive = isHover && isMouseDown
-      const activeTarget = isActive ? 1 : 0
-      animState.buttonActive[i] = lerp(
-        animState.buttonActive[i] || 0,
-        activeTarget,
-        speed * 2
-      )
+
+      stepSpring(sb.hover, isHover ? 1 : 0, HOVER_STIFFNESS, HOVER_DAMPING, dt)
+      stepSpring(sb.active, isActive ? 1 : 0, HOVER_STIFFNESS * 1.5, HOVER_DAMPING * 1.2, dt)
+
+      // Sync into animState arrays for the draw() loop
+      animState.buttonHovers[i] = sb.hover.val
+      animState.buttonActive[i] = sb.active.val
     })
   }
 
-  function draw () {
+  function draw() {
     const { style, buttons: btnConfig } = config
     const dpr = window.devicePixelRatio || 1
-
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
 
-    // Background, border, blur, and shadow are all handled by
-    // the wrapper div via CSS. Canvas only draws interactive content.
+    const baseBtnSize = style.iconSize + style.iconPadding * 2
 
     buttons = []
     let x = style.padding
@@ -360,59 +387,47 @@
     btnConfig.forEach((btn, i) => {
       const hoverVal = animState.buttonHovers[i]
       const activeVal = animState.buttonActive[i]
+
+      // Declare targetScale FIRST
       const targetScale =
         1 +
         hoverVal * (style.hoverScale - 1) -
         activeVal * (style.hoverScale - style.activeScale)
-      const currentBtnSize = style.buttonSize * targetScale
-      const offset = (style.buttonSize - currentBtnSize) / 2
 
-      buttons.push({
-        x: x,
-        y: y,
-        w: style.buttonSize,
-        h: style.buttonSize,
-        data: btn
-      })
+      const currentBtnSize = baseBtnSize * targetScale
+      const offset = (baseBtnSize - currentBtnSize) / 2
+
+      // Hit-testing uses the base (un-scaled) box so hover doesn't jitter
+      buttons.push({ x, y, w: baseBtnSize, h: baseBtnSize, data: btn })
 
       const bx = x + offset
       const by = y + offset
 
-      // Hover highlight
-      if (hoverVal > 0.01) {
+      if (hoverVal > 0.001) {
         ctx.fillStyle = style.hoverColor
         ctx.globalAlpha = style.hoverOpacity * hoverVal
-        roundRect(
-          ctx,
-          bx,
-          by,
-          currentBtnSize,
-          currentBtnSize,
-          style.borderRadius
-        )
+        roundRect(ctx, bx, by, currentBtnSize, currentBtnSize, style.borderRadius)
         ctx.fill()
         ctx.globalAlpha = 1
       }
 
-      // Icon
       const iconImg = loadedIcons[btn.id]
       if (iconImg && iconsReady) {
         const lift = hoverVal * -1 * (style.iconLift || 0)
         const scaledIconSize = style.iconSize * targetScale
-        const ix = x + (style.buttonSize - scaledIconSize) / 2
-        const iy = y + (style.buttonSize - scaledIconSize) / 2 + lift
-        ctx.filter =
-          hoverVal > 0.01 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
+        const ix = x + (baseBtnSize - scaledIconSize) / 2
+        const iy = y + (baseBtnSize - scaledIconSize) / 2 + lift
+        ctx.filter = hoverVal > 0.001 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
         ctx.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
         ctx.filter = 'none'
       }
 
-      x += style.buttonSize + style.buttonSpacing
+      x += baseBtnSize + style.buttonSpacing
     })
   }
 
   // --- Mouse Interaction ---
-  function handleMouseMove (e) {
+  function handleMouseMove(e) {
     if (!isVisible) return
     const rect = canvas.getBoundingClientRect()
     const mx = e.clientX - rect.left
@@ -420,12 +435,7 @@
     let cursor = 'default'
     let hoveredIndex = -1
     buttons.forEach((btn, i) => {
-      if (
-        mx >= btn.x &&
-        mx <= btn.x + btn.w &&
-        my >= btn.y &&
-        my <= btn.y + btn.h
-      ) {
+      if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
         cursor = 'pointer'
         hoveredIndex = i
       }
@@ -434,13 +444,11 @@
     canvas.style.cursor = cursor
   }
 
-  function handleCanvasDown (e) {
-    if (animState.hoveredButtonIndex !== -1) {
-      isMouseDown = true
-    }
+  function handleCanvasDown(e) {
+    if (animState.hoveredButtonIndex !== -1) isMouseDown = true
   }
 
-  async function handleCanvasUp (e) {
+  async function handleCanvasUp(e) {
     isMouseDown = false
     if (animState.hoveredButtonIndex === -1) return
     const btn = buttons[animState.hoveredButtonIndex]
@@ -453,11 +461,8 @@
       window.open(targetUrl, '_blank')
     } else if (type === 'action') {
       if (action === 'copy') {
-        try {
-          await navigator.clipboard.writeText(currentSelection)
-        } catch (err) {
-          console.error('Copy failed:', err)
-        }
+        try { await navigator.clipboard.writeText(currentSelection) }
+        catch (err) { console.error('Copy failed:', err) }
       } else if (action === 'paste') {
         try {
           const text = await navigator.clipboard.readText()
@@ -465,16 +470,14 @@
             selectionRange.deleteContents()
             selectionRange.insertNode(document.createTextNode(text))
           }
-        } catch (err) {
-          console.error(err)
-        }
+        } catch (err) { console.error(err) }
       }
     }
     hideToast()
   }
 
   // --- Drawing Utilities ---
-  function roundRect (ctx, x, y, w, h, r) {
+  function roundRect(ctx, x, y, w, h, r) {
     if (w < 2 * r) r = w / 2
     if (h < 2 * r) r = h / 2
     ctx.beginPath()

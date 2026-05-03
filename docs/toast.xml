@@ -1,12 +1,51 @@
-<project>
-  <name>
-    Toast
-  </name>
-</project>
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+The content has been processed where empty lines have been removed.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: **/*.js, **/*.html, **/*.json
+- Files matching these patterns are excluded: node_modules, **/node_modules, **/.venv/**, **/venv/**, **/yarn.lock, **/*.md, node_modules, docs, dist
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Empty lines have been removed from all files
+- Long base64 data strings (e.g., data:image/png;base64,...) have been truncated to reduce token count
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
 
 <directory_structure>
 assets/
-docs/
 build.js
 content.js
 manifest.json
@@ -20,90 +59,251 @@ This section contains the contents of the repository's files.
 
 <file path="build.js">
 #!/usr/bin/env node
+'use strict'
 const esbuild = require('esbuild')
 const fs = require('fs')
 const path = require('path')
 const archiver = require('archiver')
-// Config
+const http = require('http')
+const isDev = process.argv.includes('--watch') || process.argv.includes('--dev')
 const distDir = 'dist'
 const iconsDir = path.join(distDir, 'assets')
 const zipName = 'extension.zip'
-console.log('🚧 Starting Build Process...')
-// 1. Clean Dist
-if (fs.existsSync(distDir)) {
-  fs.rmSync(distDir, { recursive: true })
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function copyAssets() {
+  if (!fs.existsSync(iconsDir)) fs.mkdirSync(iconsDir, { recursive: true })
+    ;['icon16.png', 'icon48.png', 'icon128.png'].forEach(icon => {
+      const src = path.join('assets', icon)
+      const dest = path.join(iconsDir, icon)
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, dest)
+      } else if (!fs.existsSync(dest)) {
+        fs.writeFileSync(dest, '')
+        console.warn(`[warn] Created empty placeholder for ${icon}`)
+      }
+    })
 }
-if (fs.existsSync(zipName)) {
-  fs.rmSync(zipName)
+function copyManifest() {
+  fs.copyFileSync('manifest.json', path.join(distDir, 'manifest.json'))
 }
-fs.mkdirSync(distDir)
-fs.mkdirSync(iconsDir)
-// 2. Bundle Content Script
-esbuild.buildSync({
-  entryPoints: ['content.js'],
-  bundle: true,
-  minify: true,
-  outfile: path.join(distDir, 'content.js'),
-  target: 'chrome100', // Modern chrome target
-  format: 'iife'
-})
-// 3. Bundle Popup
-esbuild.buildSync({
-  entryPoints: ['popup.js'],
-  minify: true,
-  outfile: path.join(distDir, 'popup.js'),
-  target: 'chrome100'
-})
-// 4. Minify HTML
-const popupHtml = fs.readFileSync('popup.html', 'utf8')
-const minifiedHtml = popupHtml
-  .replace(/\n\s+/g, '')
-  .replace(/>\s+</g, '><')
-  .replace(/<!--.*?-->/g, '')
-fs.writeFileSync(path.join(distDir, 'popup.html'), minifiedHtml)
-// 5. Assets & Manifest
-fs.copyFileSync('manifest.json', path.join(distDir, 'manifest.json'))
-;['icon16.png', 'icon48.png', 'icon128.png'].forEach(icon => {
-  const src = path.join('assets', icon)
-  const dest = path.join(iconsDir, icon)
-  if (fs.existsSync(src)) {
-    fs.copyFileSync(src, dest)
-  } else {
-    // Create dummy icons if they don't exist to prevent build failure
-    if (!fs.existsSync(dest)) {
-      fs.writeFileSync(dest, '')
-      console.warn(`⚠️ Created empty placeholder for ${icon}`)
+function minifyAndCopyHtml() {
+  const src = fs.readFileSync('popup.html', 'utf8')
+  const out = src
+    .replace(/\n\s+/g, '')
+    .replace(/>\s+</g, '><')
+    .replace(/<!--.*?-->/gs, '')
+  fs.writeFileSync(path.join(distDir, 'popup.html'), out)
+}
+function prepareDist() {
+  if (fs.existsSync(distDir)) fs.rmSync(distDir, { recursive: true })
+  fs.mkdirSync(distDir)
+  fs.mkdirSync(iconsDir)
+}
+// ─── Dev Mode ───────────────────────────────────────────────────────────────
+//
+// How it works:
+//   1. esbuild runs in watch mode — rebuilds content.js and popup.js on save.
+//   2. A tiny SSE server runs on localhost:8099. The dist/reload-shim.js
+//      script (auto-injected during dev) connects to it and calls
+//      chrome.runtime.reload() whenever the server sends a "reload" event.
+//   3. A manifest.json watcher triggers a full manifest re-copy + SSE push.
+//   4. popup.html is watched separately since esbuild doesn't handle HTML.
+//
+// Setup (one-time):
+//   - Load dist/ as an unpacked extension in chrome://extensions
+//   - Enable "Developer mode"
+//   - No extra Chrome extension needed — the shim is injected automatically.
+const SSE_PORT = 8099
+let sseClients = []
+function startSseServer() {
+  const server = http.createServer((req, res) => {
+    if (req.url !== '/events') {
+      res.writeHead(404)
+      res.end()
+      return
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*'
+    })
+    res.write('data: connected\n\n')
+    sseClients.push(res)
+    req.on('close', () => {
+      sseClients = sseClients.filter(c => c !== res)
+    })
+  })
+  server.listen(SSE_PORT, () => {
+    console.log(`[dev] SSE server listening on http://localhost:${SSE_PORT}/events`)
+  })
+}
+function pushReload(reason) {
+  console.log(`[dev] Reload triggered: ${reason}`)
+  sseClients.forEach(res => res.write('data: reload\n\n'))
+}
+// Minimal reload shim injected into dist/ only during dev builds.
+// It reconnects automatically if the dev server restarts.
+const reloadShim = `
+;(function devReloadShim() {
+  const url = 'http://localhost:${SSE_PORT}/events'
+  function connect() {
+    const es = new EventSource(url)
+    es.onmessage = e => {
+      if (e.data === 'reload') chrome.runtime.reload()
+    }
+    es.onerror = () => {
+      es.close()
+      setTimeout(connect, 2000)
     }
   }
-})
-console.log('✅ Compilation Complete.')
-// 6. Zip for Web Store
-console.log('📦 Packaging for Web Store...')
-const output = fs.createWriteStream(zipName)
-const archive = archiver('zip', {
-  zlib: { level: 9 } // Max compression
-})
-output.on('close', function () {
-  const mb = (archive.pointer() / 1024 / 1024).toFixed(2)
-  console.log(`🎉 Success! ${zipName} created (${mb} MB)`)
-  console.log(' Ready to upload to Chrome Web Store Dashboard.')
-})
-archive.on('error', function (err) {
-  throw err
-})
-archive.pipe(output)
-archive.directory(distDir, false)
-archive.finalize()
+  connect()
+})()
+`.trim()
+function writeReloadShim() {
+  fs.writeFileSync(path.join(distDir, 'reload-shim.js'), reloadShim)
+}
+// Patch manifest to include the shim as a content_script.
+// We write a modified copy — the source manifest.json is never touched.
+function writeDevManifest() {
+  const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'))
+  // Add reload-shim.js to the existing content_scripts entry
+  if (manifest.content_scripts && manifest.content_scripts.length > 0) {
+    const entry = manifest.content_scripts[0]
+    if (!entry.js.includes('reload-shim.js')) {
+      entry.js.push('reload-shim.js')
+    }
+  }
+  // content_scripts can't reach SSE directly without host_permissions in MV3
+  if (!manifest.host_permissions) manifest.host_permissions = []
+  const shimOrigin = `http://localhost:${SSE_PORT}/`
+  if (!manifest.host_permissions.includes(shimOrigin)) {
+    manifest.host_permissions.push(shimOrigin)
+  }
+  fs.writeFileSync(
+    path.join(distDir, 'manifest.json'),
+    JSON.stringify(manifest, null, 2)
+  )
+}
+function watchStaticFiles() {
+  // Watch manifest.json
+  fs.watch('manifest.json', () => {
+    console.log('[dev] manifest.json changed')
+    writeDevManifest()
+    pushReload('manifest.json')
+  })
+  // Watch popup.html
+  fs.watch('popup.html', () => {
+    console.log('[dev] popup.html changed')
+    minifyAndCopyHtml()
+    pushReload('popup.html')
+  })
+  // Watch assets/
+  if (fs.existsSync('assets')) {
+    fs.watch('assets', () => {
+      copyAssets()
+      pushReload('assets')
+    })
+  }
+}
+async function runDev() {
+  console.log('[dev] Starting dev build...')
+  prepareDist()
+  copyAssets()
+  minifyAndCopyHtml()
+  writeReloadShim()
+  writeDevManifest()
+  startSseServer()
+  const onRebuild = (label) => ({
+    name: 'notify-reload',
+    setup(build) {
+      build.onEnd(result => {
+        if (result.errors.length > 0) {
+          console.error(`[dev] ${label} build errors:`, result.errors)
+          return
+        }
+        pushReload(label)
+      })
+    }
+  })
+  // Content script (bundled IIFE)
+  const contentCtx = await esbuild.context({
+    entryPoints: ['content.js'],
+    bundle: true,
+    minify: false, // readable during dev
+    sourcemap: 'inline',
+    outfile: path.join(distDir, 'content.js'),
+    target: 'chrome100',
+    format: 'iife',
+    plugins: [onRebuild('content.js')]
+  })
+  // Popup script
+  const popupCtx = await esbuild.context({
+    entryPoints: ['popup.js'],
+    bundle: false,
+    minify: false,
+    sourcemap: 'inline',
+    outfile: path.join(distDir, 'popup.js'),
+    target: 'chrome100',
+    plugins: [onRebuild('popup.js')]
+  })
+  await Promise.all([contentCtx.watch(), popupCtx.watch()])
+  watchStaticFiles()
+  console.log('[dev] Watching for changes. Load dist/ as an unpacked extension.')
+  console.log('[dev] Press Ctrl+C to stop.\n')
+}
+// ─── Production Build ────────────────────────────────────────────────────────
+async function runBuild() {
+  console.log('Starting build...')
+  if (fs.existsSync(zipName)) fs.rmSync(zipName)
+  prepareDist()
+  copyAssets()
+  minifyAndCopyHtml()
+  copyManifest()
+  esbuild.buildSync({
+    entryPoints: ['content.js'],
+    bundle: true,
+    minify: true,
+    outfile: path.join(distDir, 'content.js'),
+    target: 'chrome100',
+    format: 'iife'
+  })
+  esbuild.buildSync({
+    entryPoints: ['popup.js'],
+    minify: true,
+    outfile: path.join(distDir, 'popup.js'),
+    target: 'chrome100'
+  })
+  console.log('Compilation complete.')
+  console.log('Packaging for Web Store...')
+  const output = fs.createWriteStream(zipName)
+  const archive = archiver('zip', { zlib: { level: 9 } })
+  output.on('close', () => {
+    const mb = (archive.pointer() / 1024 / 1024).toFixed(2)
+    console.log(`Done. ${zipName} created (${mb} MB)`)
+  })
+  archive.on('error', err => { throw err })
+  archive.pipe(output)
+  archive.directory(distDir, false)
+  archive.finalize()
+}
+// ─── Entry ───────────────────────────────────────────────────────────────────
+if (isDev) {
+  runDev().catch(err => { console.error(err); process.exit(1) })
+} else {
+  runBuild().catch(err => { console.error(err); process.exit(1) })
+}
 </file>
 
 <file path="package.json">
 {
   "name": "toast-extension",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "Customizable floating action menu for text selections.",
   "scripts": {
     "build": "node build.js",
-    "watch": "node build.js --watch"
+    "dev": "node build.js --dev",
+    "sum": "repomix --include **/*.js,**/*.html,**/*.json --ignore node_modules,docs,dist --output docs/toast.xml"
   },
   "dependencies": {
     "esbuild": "^0.20.0"
@@ -188,30 +388,29 @@ archive.finalize()
       font-size: 13px;
     }
     input[type="color"] {
-      -webkit-appearance: none;
       width: 28px;
       height: 28px;
       border: none;
-      border-radius: 4px;
       cursor: pointer;
       background: none;
+      border-radius: 4px;
+      -webkit-appearance: none;
     }
     input[type="range"] {
-      width: 100px;
+      width: 110px;
       height: 4px;
-      background: var(--border);
       border-radius: 2px;
       -webkit-appearance: none;
+      background: var(--border);
     }
     input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 14px;
-      height: 14px;
+      width: 12px;
+      height: 12px;
       background: var(--accent);
       border-radius: 50%;
       cursor: pointer;
-      margin-top: -5px;
-      /* Alignment fix */
+      margin-top: -4px;
     }
     input[type="range"]::-webkit-slider-runnable-track {
       height: 4px;
@@ -222,7 +421,7 @@ archive.finalize()
       font-family: monospace;
       font-size: 11px;
       color: var(--text-muted);
-      width: 30px;
+      width: 34px;
       text-align: right;
     }
     /* Button List Styling */
@@ -277,7 +476,6 @@ archive.finalize()
       font-family: monospace;
       resize: vertical;
     }
-    /* Action Buttons */
     .main-btn {
       width: 100%;
       padding: 10px;
@@ -332,7 +530,7 @@ archive.finalize()
     </svg>
     Toast Configuration
   </h2>
-  <!-- Style Section -->
+  <!-- Visual Style -->
   <div class="section">
     <span class="section-title">Visual Style</span>
     <div class="control-row">
@@ -346,44 +544,84 @@ archive.finalize()
     <div class="control-row">
       <span>Opacity</span>
       <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="bgOpacity" class="style-input" data-key="bgOpacity" min="0.5" max="1" step="0.05">
-        <span class="value-display" id="val-bgOpacity">0.95</span>
+        <input type="range" id="bgOpacity" class="style-input" data-key="bgOpacity" min="0.1" max="1" step="0.01">
+        <span class="value-display" id="val-bgOpacity">0.75</span>
+      </div>
+    </div>
+    <div class="control-row">
+      <span>Border Radius</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" id="borderRadius" class="style-input" data-key="borderRadius" min="0" max="24" step="1">
+        <span class="value-display" id="val-borderRadius">13</span>
       </div>
     </div>
   </div>
-  <!-- Animation Section (New) -->
+  <!-- Layout & Spacing -->
   <div class="section">
-    <span class="section-title">Animation & Interaction</span>
+    <span class="section-title">Layout & Spacing</span>
     <div class="control-row">
-      <span>Anim Speed</span>
+      <span>Icon Size</span>
       <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="animSpeed" class="style-input" data-key="animSpeed" min="0.05" max="0.5" step="0.05">
-        <span class="value-display" id="val-animSpeed">0.2</span>
+        <input type="range" id="iconSize" class="style-input" data-key="iconSize" min="10" max="32" step="1">
+        <span class="value-display" id="val-iconSize">18</span>
       </div>
     </div>
     <div class="control-row">
+      <span>Icon Padding</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" id="iconPadding" class="style-input" data-key="iconPadding" min="2" max="16" step="1">
+        <span class="value-display" id="val-iconPadding">5</span>
+      </div>
+    </div>
+    <div class="control-row">
+      <span>Button Spacing</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" id="buttonSpacing" class="style-input" data-key="buttonSpacing" min="0" max="16" step="1">
+        <span class="value-display" id="val-buttonSpacing">4</span>
+      </div>
+    </div>
+    <div class="control-row">
+      <span>Wall Padding</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" id="padding" class="style-input" data-key="padding" min="2" max="20" step="1">
+        <span class="value-display" id="val-padding">6</span>
+      </div>
+    </div>
+  </div>
+  <!-- Animation & Interaction -->
+  <div class="section">
+    <span class="section-title">Animation & Interaction</span>
+    <div class="control-row">
       <span>Hover Scale</span>
       <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="hoverScale" class="style-input" data-key="hoverScale" min="1.0" max="1.5" step="0.05">
+        <input type="range" id="hoverScale" class="style-input" data-key="hoverScale" min="1.0" max="1.5" step="0.01">
         <span class="value-display" id="val-hoverScale">1.15</span>
       </div>
     </div>
     <div class="control-row">
       <span>Active Click</span>
       <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="activeScale" class="style-input" data-key="activeScale" min="0.5" max="1.0" step="0.05">
-        <span class="value-display" id="val-activeScale">0.95</span>
+        <input type="range" id="activeScale" class="style-input" data-key="activeScale" min="0.5" max="1.0" step="0.01">
+        <span class="value-display" id="val-activeScale">0.9</span>
       </div>
     </div>
     <div class="control-row">
       <span>Icon Lift</span>
       <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="iconLift" class="style-input" data-key="iconLift" min="0" max="10" step="1">
-        <span class="value-display" id="val-iconLift">3px</span>
+        <input type="range" id="iconLift" class="style-input" data-key="iconLift" min="0" max="12" step="1">
+        <span class="value-display" id="val-iconLift">3</span>
+      </div>
+    </div>
+    <div class="control-row">
+      <span>Hover Opacity</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" id="hoverOpacity" class="style-input" data-key="hoverOpacity" min="0.05" max="1"
+          step="0.01">
+        <span class="value-display" id="val-hoverOpacity">0.2</span>
       </div>
     </div>
   </div>
-  <!-- Actions Section -->
+  <!-- Actions -->
   <div class="section">
     <span class="section-title">Actions & Links</span>
     <div id="buttonList"></div>
@@ -400,20 +638,13 @@ archive.finalize()
 {
   "manifest_version": 3,
   "name": "Toast - Floating Selection Menu",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "A customizable floating action menu that appears when you select text.",
-  "permissions": [
-    "storage",
-    "clipboardWrite"
-  ],
+  "permissions": ["storage", "clipboardWrite"],
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content.js"
-      ],
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
       "run_at": "document_end"
     }
   ],
@@ -428,12 +659,8 @@ archive.finalize()
   },
   "web_accessible_resources": [
     {
-      "resources": [
-        "assets/*.png"
-      ],
-      "matches": [
-        "chrome-extension://*/*"
-      ]
+      "resources": ["assets/*.png"],
+      "matches": ["chrome-extension://*/*"]
     }
   ]
 }
@@ -449,21 +676,20 @@ document.addEventListener('DOMContentLoaded', () => {
     status: document.getElementById('status'),
     styleInputs: document.querySelectorAll('.style-input')
   }
-  // --- ENSURED DEFAULT MATCHES CONTENT.JS ---
+  // --- DEFAULT CONFIG (aligned with content.js) ---
   const defaultConfig = {
     style: {
-      bgColor: '#0f172a',
-      bgOpacity: 0.95,
-      hoverColor: '#3b82f6',
+      bgColor: '#1b1c1d',
+      bgOpacity: 0.75,
+      hoverColor: '#404040',
       hoverOpacity: 0.2,
-      borderRadius: 12,
-      buttonSize: 36,
-      buttonSpacing: 6,
+      borderRadius: 13,
+      iconSize: 18,
+      iconPadding: 5,
+      buttonSpacing: 4,
       padding: 6,
-      iconSize: 20,
-      animSpeed: 0.2,
       hoverScale: 1.15,
-      activeScale: 0.95,
+      activeScale: 0.9,
       iconLift: 3
     },
     buttons: [
@@ -471,28 +697,25 @@ document.addEventListener('DOMContentLoaded', () => {
         id: 'copy',
         type: 'action',
         action: 'copy',
-        // Filled, reliable SVG icon
-        icon: '<svg viewBox="0 0 24 24" fill="#e2e8f0" xmlns="http://www.w3.org/2000/svg"><path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"/></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.556 13.218a2.67 2.67 0 01-3.774-3.774l2.359-2.36a2.67 2.67 0 013.628-.135m-.325-3.167a2.669 2.669 0 113.774 3.774l-2.359 2.36a2.67 2.67 0 01-3.628.135"/><path d="M10.5 3c-3.287 0-4.931 0-6.037.908a4 4 0 00-.555.554C3 5.57 3 7.212 3 10.5V13c0 3.771 0 5.657 1.172 6.828S7.229 21 11 21h2.5c3.287 0 4.931 0 6.038-.908q.304-.25.554-.554C21 18.43 21 16.788 21 13.5"/></g></svg>'
       },
       {
         id: 'google',
         type: 'link',
         url: 'https://www.google.com/search?q=%s',
-        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5"><circle cx="11" cy="11" r="6"/><path stroke-linecap="round" d="M11 8a3 3 0 00-3 3m12 9l-3-3"/></g></svg>'
       }
     ]
   }
   let currentConfig = null
   // Load Settings
   chrome.storage.sync.get(['canvasToastConfig'], result => {
-    // Deep Merge Logic
     const saved = result.canvasToastConfig || {}
     currentConfig = {
       style: {
         ...defaultConfig.style,
         ...(saved.style || {})
       },
-      // If saved buttons exist and are not empty, use them. Otherwise use default.
       buttons:
         saved.buttons && saved.buttons.length > 0
           ? saved.buttons
@@ -500,8 +723,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     renderUI()
   })
-  function renderUI () {
-    // 1. Populate Style Inputs
+  function renderUI() {
     elements.styleInputs.forEach(input => {
       const key = input.dataset.key
       if (currentConfig.style[key] !== undefined) {
@@ -510,13 +732,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (display) display.textContent = currentConfig.style[key]
       }
     })
-    // 2. Populate Buttons
     if (!elements.buttonList) return
     elements.buttonList.innerHTML = ''
     currentConfig.buttons.forEach((btn, index) => {
       const item = document.createElement('div')
       item.className = 'btn-item'
-      // Header
       const header = document.createElement('div')
       header.className = 'btn-header'
       const headerLabel = document.createElement('span')
@@ -528,7 +748,6 @@ document.addEventListener('DOMContentLoaded', () => {
       header.appendChild(headerLabel)
       header.appendChild(removeBtn)
       item.appendChild(header)
-      // Type Select
       const typeSelect = document.createElement('select')
       typeSelect.className = 'config-input type-select'
       typeSelect.dataset.field = 'type'
@@ -545,36 +764,35 @@ document.addEventListener('DOMContentLoaded', () => {
       typeSelect.appendChild(linkOption)
       item.appendChild(typeSelect)
       if (btn.type === 'action') {
-      const actionSelect = document.createElement('select')
-      actionSelect.className = 'config-input'
-      actionSelect.dataset.field = 'action'
-      actionSelect.dataset.index = index
-      const copyOpt = document.createElement('option')
-      copyOpt.value = 'copy'
-      copyOpt.textContent = 'Copy Text'
-      copyOpt.selected = btn.action === 'copy'
-      const pasteOpt = document.createElement('option')
-      pasteOpt.value = 'paste'
-      pasteOpt.textContent = 'Paste Text'
-      pasteOpt.selected = btn.action === 'paste'
-      actionSelect.appendChild(copyOpt)
-      actionSelect.appendChild(pasteOpt)
-      item.appendChild(actionSelect)
+        const actionSelect = document.createElement('select')
+        actionSelect.className = 'config-input'
+        actionSelect.dataset.field = 'action'
+        actionSelect.dataset.index = index
+        const copyOpt = document.createElement('option')
+        copyOpt.value = 'copy'
+        copyOpt.textContent = 'Copy Text'
+        copyOpt.selected = btn.action === 'copy'
+        const pasteOpt = document.createElement('option')
+        pasteOpt.value = 'paste'
+        pasteOpt.textContent = 'Paste Text'
+        pasteOpt.selected = btn.action === 'paste'
+        actionSelect.appendChild(copyOpt)
+        actionSelect.appendChild(pasteOpt)
+        item.appendChild(actionSelect)
       } else {
-      const urlInput = document.createElement('input')
-      urlInput.type = 'text'
-      urlInput.className = 'config-input'
-      urlInput.dataset.field = 'url'
-      urlInput.dataset.index = index
-      urlInput.value = btn.url || ''
-      urlInput.placeholder = 'https://google.com/search?q=%s'
-      item.appendChild(urlInput)
-      const urlHelper = document.createElement('span')
-      urlHelper.className = 'helper-text'
-      urlHelper.textContent = 'Use %s for selected text'
-      item.appendChild(urlHelper)
+        const urlInput = document.createElement('input')
+        urlInput.type = 'text'
+        urlInput.className = 'config-input'
+        urlInput.dataset.field = 'url'
+        urlInput.dataset.index = index
+        urlInput.value = btn.url || ''
+        urlInput.placeholder = 'https://google.com/search?q=%s'
+        item.appendChild(urlInput)
+        const urlHelper = document.createElement('span')
+        urlHelper.className = 'helper-text'
+        urlHelper.textContent = 'Use %s for selected text'
+        item.appendChild(urlHelper)
       }
-      // Icon textarea
       const iconHelper = document.createElement('span')
       iconHelper.className = 'helper-text'
       iconHelper.textContent = 'SVG Icon Code:'
@@ -589,15 +807,13 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     attachListeners()
   }
-  function attachListeners () {
-    // Remove Button
+  function attachListeners() {
     document.querySelectorAll('.btn-remove').forEach(el => {
       el.addEventListener('click', e => {
         currentConfig.buttons.splice(e.target.dataset.index, 1)
         renderUI()
       })
     })
-    // Button Config Inputs
     document.querySelectorAll('.config-input').forEach(el => {
       el.addEventListener('change', e => {
         const idx = e.target.dataset.index
@@ -619,7 +835,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       })
     })
-    // Style Inputs
     elements.styleInputs.forEach(input => {
       input.addEventListener('input', e => {
         const key = e.target.dataset.key
@@ -633,18 +848,15 @@ document.addEventListener('DOMContentLoaded', () => {
       })
     })
   }
-  // Add New Button
   elements.addBtn.addEventListener('click', () => {
     currentConfig.buttons.push({
       id: 'btn-' + Date.now(),
       type: 'link',
       url: 'https://',
-      // Consistent default new button icon
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>'
     })
     renderUI()
   })
-  // Save Settings
   elements.saveBtn.addEventListener('click', () => {
     elements.saveBtn.textContent = 'Saving...'
     chrome.storage.sync.set(
@@ -664,11 +876,11 @@ document.addEventListener('DOMContentLoaded', () => {
 </file>
 
 <file path="content.js">
-// content.js - Refined & Robust
-;(function () {
+// content.js - Toast Selection Popup (Hybrid DOM + Canvas)
+(function () {
   'use strict'
   // --- Global State ---
-  let canvas, ctx
+  let toastEl, canvas, ctx
   let currentSelection = ''
   let selectionRange = null
   let isVisible = false
@@ -676,30 +888,54 @@ document.addEventListener('DOMContentLoaded', () => {
   let buttons = []
   let loadedIcons = {}
   let iconsReady = false
-  let isMouseDown = false // Track click state for active animation
+  let isMouseDown = false
   // Animation State
   const animState = {
-    toastHover: 0,
-    buttonHovers: [], // Array of floats (0 to 1)
-    buttonActive: [], // Array of floats (0 to 1) for click effect
+    buttonHovers: [],
+    buttonActive: [],
     opacity: 0,
     hoveredButtonIndex: -1,
     scale: 0.8
   }
+  // Spring state: each animated value gets { val, vel }
+  const springs = {
+    opacity: { val: 0, vel: 0 },
+    scale: { val: 0.8, vel: 0 },
+    buttons: [] // populated in loadIcons: [{ hover: {val,vel}, active: {val,vel} }]
+  }
+  // --- Spring Physics ---
+  // stiffness: how fast it snaps toward target
+  // damping:   how much it resists oscillation (>1 = overdamped/no bounce, ~0.6-0.8 = subtle bounce)
+  const SPRING_STIFFNESS = 280
+  const SPRING_DAMPING = 22
+  const HOVER_STIFFNESS = 320
+  const HOVER_DAMPING = 26
+  let lastTime = null
+  function stepSpring(spring, target, stiffness, damping, dt) {
+    const force = -stiffness * (spring.val - target)
+    const dampen = -damping * spring.vel
+    spring.vel += (force + dampen) * dt
+    spring.val += spring.vel * dt
+    // Snap to rest when close enough
+    if (Math.abs(spring.val - target) < 0.001 && Math.abs(spring.vel) < 0.001) {
+      spring.val = target
+      spring.vel = 0
+    }
+  }
   // --- Default Configuration ---
   const defaultConfig = {
     style: {
-      bgColor: '#13161D',
-      bgOpacity: 0.95,
-      hoverColor: '#1B4F80',
+      bgColor: '#1b1c1d',
+      bgOpacity: 0.75,
+      hoverColor: '#404040',
       hoverOpacity: 0.2,
-      borderRadius: 16,
-      buttonSize: 34,
-      buttonSpacing: 6,
+      borderRadius: 13,
+      // buttonSize: 28,
+      // animSpeed: 0.15,
       padding: 6,
-      iconSize: 20,
-      animSpeed: 0.3,
-      hoverScale: 1.1,
+      iconSize: 18,
+      buttonSpacing: 4,
+      hoverScale: 1.15,
       activeScale: 0.9,
       iconLift: 3
     },
@@ -708,23 +944,33 @@ document.addEventListener('DOMContentLoaded', () => {
         id: 'copy',
         type: 'action',
         action: 'copy',
-        // High contrast, filled icon for better visibility
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><path d="M14 7c0-.932 0-1.398-.152-1.765a2 2 0 0 0-1.083-1.083C12.398 4 11.932 4 11 4H8c-1.886 0-2.828 0-3.414.586S4 6.114 4 8v3c0 .932 0 1.398.152 1.765a2 2 0 0 0 1.083 1.083C5.602 14 6.068 14 7 14"/><rect width="10" height="10" x="10" y="10" rx="2"/></g></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.556 13.218a2.67 2.67 0 01-3.774-3.774l2.359-2.36a2.67 2.67 0 013.628-.135m-.325-3.167a2.669 2.669 0 113.774 3.774l-2.359 2.36a2.67 2.67 0 01-3.628.135"/><path d="M10.5 3c-3.287 0-4.931 0-6.037.908a4 4 0 00-.555.554C3 5.57 3 7.212 3 10.5V13c0 3.771 0 5.657 1.172 6.828S7.229 21 11 21h2.5c3.287 0 4.931 0 6.038-.908q.304-.25.554-.554C21 18.43 21 16.788 21 13.5"/></g></svg>'
       },
       {
         id: 'google',
         type: 'link',
         url: 'https://www.google.com/search?q=%s',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><g fill="none"><path fill="#fff" fill-opacity="0.25" d="M63.453 67.749L50.725 55.017a2.998 2.998 0 1 1 4.24-4.24l12.73 12.732a2.998 2.998 0 1 1-4.242 4.24m-47.856-38.68a19.052 19.052 0 1 1 36.806 9.862a19.052 19.052 0 0 1-36.806-9.862"/><path stroke="#bbb" stroke-linecap="round" stroke-linejoin="round" d="m47.445 47.498l3.28 3.28m0 4.239l12.728 12.732a2.998 2.998 0 0 0 4.241-4.24L54.966 50.777a2.998 2.998 0 1 0-4.241 4.24m-30.197-7.545a19.053 19.053 0 1 1 26.944-26.944a19.053 19.053 0 0 1-26.944 26.944" stroke-width="2"/></g></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5"><circle cx="11" cy="11" r="6"/><path stroke-linecap="round" d="M11 8a3 3 0 00-3 3m12 9l-3-3"/></g></svg>'
       }
     ]
   }
   let config = JSON.parse(JSON.stringify(defaultConfig))
+  // --- hexToRgb (memoized) ---
+  const hexToRgbCache = new Map()
+  function hexToRgb(hex) {
+    if (hexToRgbCache.has(hex)) return hexToRgbCache.get(hex)
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+    const rgb = result
+      ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
+      : { r: 0, g: 0, b: 0 }
+    hexToRgbCache.set(hex, rgb)
+    return rgb
+  }
   // --- Initialization ---
-  function init () {
+  function init() {
     chrome.storage.sync.get(['canvasToastConfig'], result => {
       applyConfig(result.canvasToastConfig)
-      setupCanvas()
+      setupDOM()
       loadIcons()
       attachEvents()
     })
@@ -732,98 +978,120 @@ document.addEventListener('DOMContentLoaded', () => {
       if (changes.canvasToastConfig) {
         applyConfig(changes.canvasToastConfig.newValue)
         loadIcons()
+        applyWrapperStyles()
         if (isVisible) requestAnimationFrame(draw)
       }
     })
   }
-  function applyConfig (newConfig) {
+  function applyConfig(newConfig) {
     if (!newConfig) return
-    // If the saved config has NO buttons (broken state), revert to default buttons
-    if (!newConfig.buttons || newConfig.buttons.length === 0) {
-      config.buttons = defaultConfig.buttons
-    } else {
-      config.buttons = newConfig.buttons
-    }
+    config.buttons = (newConfig.buttons && newConfig.buttons.length > 0)
+      ? newConfig.buttons
+      : defaultConfig.buttons
     if (newConfig.style) {
       config.style = { ...defaultConfig.style, ...newConfig.style }
     }
   }
-  function setupCanvas () {
-    if (canvas && document.body.contains(canvas)) {
-      document.body.removeChild(canvas)
+  // --- DOM Setup ---
+  function setupDOM() {
+    if (toastEl && document.body.contains(toastEl)) {
+      document.body.removeChild(toastEl)
     }
-    canvas = document.createElement('canvas')
-    Object.assign(canvas.style, {
+    toastEl = document.createElement('div')
+    Object.assign(toastEl.style, {
       position: 'fixed',
-      pointerEvents: 'none',
       zIndex: '2147483647',
       display: 'none',
-      filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.2))'
+      pointerEvents: 'none',
+      backdropFilter: 'blur(16px)',
+      webkitBackdropFilter: 'blur(16px)',
+      border: '0.5px solid rgba(255, 255, 255, 0.12)',
+      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
+      transformOrigin: 'center center',
+      overflow: 'hidden',
+      willChange: 'transform, opacity',
+      opacity: '0',
+      transform: 'scale(0.7)'
     })
-    document.body.appendChild(canvas)
+    canvas = document.createElement('canvas')
+    Object.assign(canvas.style, {
+      display: 'block',
+      pointerEvents: 'none'
+    })
+    toastEl.appendChild(canvas)
+    document.body.appendChild(toastEl)
     ctx = canvas.getContext('2d', { alpha: true })
   }
-  function attachEvents () {
+  function applyWrapperStyles() {
+    if (!toastEl) return
+    const { style } = config
+    const bgRgb = hexToRgb(style.bgColor)
+    toastEl.style.background = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`
+    toastEl.style.borderRadius = style.borderRadius + 'px'
+  }
+  function attachEvents() {
     document.addEventListener('mouseup', handleSelectionChange)
     document.addEventListener('mousedown', handleOutsideClick)
     document.addEventListener('scroll', handleScroll, { passive: true })
     canvas.addEventListener('mousemove', handleMouseMove)
     canvas.addEventListener('mousedown', handleCanvasDown)
     canvas.addEventListener('mouseup', handleCanvasUp)
-    canvas.addEventListener('mouseleave', () => {
+    toastEl.addEventListener('mouseleave', () => {
       animState.hoveredButtonIndex = -1
       isMouseDown = false
     })
   }
-  // --- Logic ---
-  function loadIcons () {
-    loadedIcons = {}
-    iconsReady = false
-    let loadedCount = 0
-    const totalIcons = config.buttons.length
-    if (totalIcons === 0) {
-      iconsReady = true
-      return
-    }
-    animState.buttonHovers = new Array(totalIcons).fill(0)
-    animState.buttonActive = new Array(totalIcons).fill(0)
-    config.buttons.forEach(btn => {
+  // --- Icon Loading (Promise.all) ---
+  function svgToDataUri(svgStr) {
+    return 'data:image/svg+xml;charset=utf-8;base64,' +
+      window.btoa(unescape(encodeURIComponent(svgStr)))
+  }
+  function loadSingleIcon(btn) {
+    return new Promise(resolve => {
       const img = new Image()
       let src = btn.icon || ''
       if (src.trim().startsWith('<svg')) {
-        try {
-          // Explicitly setting charset to utf-8 helps with some SVG parsing issues
-          src =
-            'data:image/svg+xml;charset=utf-8;base64,' +
-            window.btoa(unescape(encodeURIComponent(src)))
-        } catch (e) {
+        try { src = svgToDataUri(src) } catch (e) {
           console.error('Icon encoding failed', e)
+          return resolve(null)
         }
       }
-      img.onload = () => {
-        loadedIcons[btn.id] = img
-        loadedCount++
-        checkReady()
-      }
+      img.onload = () => resolve({ id: btn.id, img })
       img.onerror = () => {
         console.warn(`Failed to load icon for ${btn.id}`)
-        loadedCount++
-        checkReady()
+        resolve(null)
       }
       img.src = src
     })
-    function checkReady () {
-      if (loadedCount === totalIcons) {
-        iconsReady = true
-        if (isVisible) requestAnimationFrame(draw)
-      }
-    }
   }
-  function handleSelectionChange (e) {
-    if (e.target === canvas) return
-    setTimeout(() => {
+  function loadIcons() {
+    loadedIcons = {}
+    iconsReady = false
+    const total = config.buttons.length
+    // Reset spring states to match button count
+    springs.buttons = config.buttons.map(() => ({
+      hover: { val: 0, vel: 0 },
+      active: { val: 0, vel: 0 }
+    }))
+    // Keep animState arrays in sync (still used for hit-testing)
+    animState.buttonHovers = new Array(total).fill(0)
+    animState.buttonActive = new Array(total).fill(0)
+    if (total === 0) { iconsReady = true; return }
+    Promise.all(config.buttons.map(loadSingleIcon)).then(results => {
+      results.forEach(r => { if (r) loadedIcons[r.id] = r.img })
+      iconsReady = true
+      if (isVisible) requestAnimationFrame(draw)
+    })
+  }
+  // --- Selection Debounce (rAF-based) ---
+  let selectionRafId = null
+  function handleSelectionChange(e) {
+    if (toastEl && toastEl.contains(e.target)) return
+    if (selectionRafId) cancelAnimationFrame(selectionRafId)
+    selectionRafId = requestAnimationFrame(() => {
+      selectionRafId = null
       const sel = window.getSelection()
-      if (sel.rangeCount === 0) return
+      if (!sel || sel.rangeCount === 0) return
       const text = sel.toString().trim()
       if (text.length > 0) {
         currentSelection = text
@@ -838,164 +1106,130 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         if (!isMouseDown) hideToast()
       }
-    }, 10)
+    })
   }
-  function handleOutsideClick (e) {
-    if (isVisible && e.target !== canvas) {
-      // Don't immediately hide — the mouseup handler will re-evaluate
-      // Only hide if there's no active text selection starting
-    }
+  function handleOutsideClick(e) {
+    // Don't immediately hide — the mouseup handler will re-evaluate
+    if (isVisible && toastEl && !toastEl.contains(e.target)) { }
   }
-  function handleScroll () {
+  function handleScroll() {
     if (isVisible) hideToast()
   }
-  function showToast (rect) {
+  // --- Toast Lifecycle ---
+  function showToast(rect) {
     const { padding, buttonSize, buttonSpacing } = config.style
     const count = config.buttons.length
-    const totalWidth =
-      padding * 2 + buttonSize * count + buttonSpacing * (count - 1)
+    const totalWidth = padding * 2 + buttonSize * count + buttonSpacing * (count - 1)
     const totalHeight = padding * 2 + buttonSize
-    const buffer = 50
     const dpr = window.devicePixelRatio || 1
-    canvas.style.width = totalWidth + buffer * 2 + 'px'
-    canvas.style.height = totalHeight + buffer * 2 + 'px'
-    canvas.width = (totalWidth + buffer * 2) * dpr
-    canvas.height = (totalHeight + buffer * 2) * dpr
+    canvas.style.width = totalWidth + 'px'
+    canvas.style.height = totalHeight + 'px'
+    canvas.width = totalWidth * dpr
+    canvas.height = totalHeight * dpr
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.scale(dpr, dpr)
+    toastEl.style.width = totalWidth + 'px'
+    toastEl.style.height = totalHeight + 'px'
+    applyWrapperStyles()
     let left = rect.left + rect.width / 2 - totalWidth / 2
     let top = rect.top - totalHeight - 16
     if (top < 0) top = rect.bottom + 16
     if (left < 10) left = 10
-    if (left + totalWidth > window.innerWidth - 10) {
-      left = window.innerWidth - totalWidth - 10
-    }
-    canvas.style.left = left - buffer + 'px'
-    canvas.style.top = top - buffer + 'px'
-    canvas.style.display = 'block'
+    if (left + totalWidth > window.innerWidth - 10) left = window.innerWidth - totalWidth - 10
+    toastEl.style.left = left + 'px'
+    toastEl.style.top = top + 'px'
+    toastEl.style.display = 'block'
+    toastEl.style.pointerEvents = 'auto'
     canvas.style.pointerEvents = 'auto'
     if (!isVisible) {
       isVisible = true
-      animState.opacity = 0
-      animState.scale = 0.8
+      // Kick springs from their collapsed state
+      springs.opacity.val = 0
+      springs.opacity.vel = 0
+      springs.scale.val = 0.8
+      springs.scale.vel = 0
+      toastEl.style.opacity = '0'
+      toastEl.style.transform = 'scale(0.8)'
+      lastTime = null
       startLoop()
     }
   }
-  function hideToast () {
+  function hideToast() {
     isVisible = false
+    toastEl.style.pointerEvents = 'none'
     canvas.style.pointerEvents = 'none'
     animState.hoveredButtonIndex = -1
     isMouseDown = false
   }
-  function startLoop () {
+  // --- Animation Loop ---
+  function startLoop() {
     if (animationId) cancelAnimationFrame(animationId)
     animationId = null
-    loop()
+    animationId = requestAnimationFrame(loop)
   }
-  function loop () {
-    if (!isVisible && Math.abs(animState.opacity) < 0.01) {
+  function loop(timestamp) {
+    // Compute dt in seconds, clamped to avoid spiral of death on tab re-focus
+    if (!lastTime) lastTime = timestamp
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
+    lastTime = timestamp
+    const opacityAtRest = Math.abs(springs.opacity.val) < 0.001 && Math.abs(springs.opacity.vel) < 0.001
+    const scaleAtRest = Math.abs(springs.scale.val - (isVisible ? 1 : 0.9)) < 0.001
+    if (!isVisible && opacityAtRest && springs.opacity.val < 0.001) {
       animationId = null
-      canvas.style.display = 'none'
+      toastEl.style.display = 'none'
       return
     }
-    updateState()
+    updateState(dt)
     draw()
     animationId = requestAnimationFrame(loop)
   }
-  function lerp (start, end, t) {
-    return start * (1 - t) + end * t
-  }
-  function hexToRgb (hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-    return result
-      ? {
-          r: parseInt(result[1], 16),
-          g: parseInt(result[2], 16),
-          b: parseInt(result[3], 16)
-        }
-      : { r: 0, g: 0, b: 0 }
-  }
-  function updateState () {
-    const { animSpeed } = config.style
-    const speed = animSpeed || 0.2
+  function updateState(dt) {
     const targetOpacity = isVisible ? 1 : 0
     const targetScale = isVisible ? 1 : 0.9
-    animState.opacity = lerp(animState.opacity, targetOpacity, speed)
-    animState.scale = lerp(animState.scale, targetScale, speed)
+    stepSpring(springs.opacity, targetOpacity, SPRING_STIFFNESS, SPRING_DAMPING, dt)
+    stepSpring(springs.scale, targetScale, SPRING_STIFFNESS, SPRING_DAMPING, dt)
+    toastEl.style.opacity = springs.opacity.val
+    toastEl.style.transform = `scale(${springs.scale.val})`
+    // Sync legacy animState for draw() compatibility
+    animState.opacity = springs.opacity.val
+    animState.scale = springs.scale.val
     config.buttons.forEach((_, i) => {
+      const sb = springs.buttons[i]
+      if (!sb) return
       const isHover = animState.hoveredButtonIndex === i
-      const hoverTarget = isHover ? 1 : 0
-      animState.buttonHovers[i] = lerp(
-        animState.buttonHovers[i] || 0,
-        hoverTarget,
-        speed * 1.5
-      )
       const isActive = isHover && isMouseDown
-      const activeTarget = isActive ? 1 : 0
-      animState.buttonActive[i] = lerp(
-        animState.buttonActive[i] || 0,
-        activeTarget,
-        speed * 2
-      )
+      stepSpring(sb.hover, isHover ? 1 : 0, HOVER_STIFFNESS, HOVER_DAMPING, dt)
+      stepSpring(sb.active, isActive ? 1 : 0, HOVER_STIFFNESS * 1.5, HOVER_DAMPING * 1.2, dt)
+      // Sync into animState arrays for the draw() loop
+      animState.buttonHovers[i] = sb.hover.val
+      animState.buttonActive[i] = sb.active.val
     })
   }
-  function draw () {
-    const { style, buttons: btnConfig } = config
-    const buffer = 50
-    const count = btnConfig.length
-    const totalW =
-      style.padding * 2 +
-      style.buttonSize * count +
-      style.buttonSpacing * (count - 1)
-    const totalH = style.padding * 2 + style.buttonSize
+  function draw() {
+    const { style, buttons: btnConfig } = config  // must be first
     const dpr = window.devicePixelRatio || 1
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
-    if (animState.opacity < 0.01) return
-    ctx.save()
-    const cx = buffer + totalW / 2
-    const cy = buffer + totalH / 2
-    ctx.translate(cx, cy)
-    ctx.scale(animState.scale, animState.scale)
-    ctx.translate(-cx, -cy)
-    ctx.globalAlpha = animState.opacity
-    const bgRgb = hexToRgb(style.bgColor)
-    ctx.fillStyle = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`
-    roundRect(ctx, buffer, buffer, totalW, totalH, style.borderRadius)
-    ctx.fill()
     buttons = []
-    let x = buffer + style.padding
-    const y = buffer + style.padding
+    let x = style.padding
+    const y = style.padding
     btnConfig.forEach((btn, i) => {
       const hoverVal = animState.buttonHovers[i]
       const activeVal = animState.buttonActive[i]
+      const currentBtnSize = (style.iconSize + style.iconPadding * 2) * targetScale
       const targetScale =
         1 +
         hoverVal * (style.hoverScale - 1) -
         activeVal * (style.hoverScale - style.activeScale)
-      const currentBtnSize = style.buttonSize * targetScale
-      const offset = (style.buttonSize - currentBtnSize) / 2
-      buttons.push({
-        x: x,
-        y: y,
-        w: style.buttonSize,
-        h: style.buttonSize,
-        data: btn
-      })
+      // const offset = (style.buttonSize - currentBtnSize) / 2
+      buttons.push({ x, y, w: style.buttonSize, h: style.buttonSize, data: btn })
       const bx = x + offset
       const by = y + offset
-      if (hoverVal > 0.01) {
+      if (hoverVal > 0.001) {
         ctx.fillStyle = style.hoverColor
-        ctx.globalAlpha = animState.opacity * style.hoverOpacity * hoverVal
-        roundRect(
-          ctx,
-          bx,
-          by,
-          currentBtnSize,
-          currentBtnSize,
-          style.borderRadius /* / 2 */
-        )
+        ctx.globalAlpha = style.hoverOpacity * hoverVal
+        roundRect(ctx, bx, by, currentBtnSize, currentBtnSize, style.borderRadius)
         ctx.fill()
-        ctx.globalAlpha = animState.opacity
+        ctx.globalAlpha = 1
       }
       const iconImg = loadedIcons[btn.id]
       if (iconImg && iconsReady) {
@@ -1003,16 +1237,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const scaledIconSize = style.iconSize * targetScale
         const ix = x + (style.buttonSize - scaledIconSize) / 2
         const iy = y + (style.buttonSize - scaledIconSize) / 2 + lift
-        ctx.filter =
-          hoverVal > 0.01 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
+        ctx.filter = hoverVal > 0.001 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
         ctx.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
         ctx.filter = 'none'
       }
       x += style.buttonSize + style.buttonSpacing
     })
-    ctx.restore()
   }
-  function handleMouseMove (e) {
+  // --- Mouse Interaction ---
+  function handleMouseMove(e) {
     if (!isVisible) return
     const rect = canvas.getBoundingClientRect()
     const mx = e.clientX - rect.left
@@ -1020,12 +1253,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let cursor = 'default'
     let hoveredIndex = -1
     buttons.forEach((btn, i) => {
-      if (
-        mx >= btn.x &&
-        mx <= btn.x + btn.w &&
-        my >= btn.y &&
-        my <= btn.y + btn.h
-      ) {
+      if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
         cursor = 'pointer'
         hoveredIndex = i
       }
@@ -1033,12 +1261,10 @@ document.addEventListener('DOMContentLoaded', () => {
     animState.hoveredButtonIndex = hoveredIndex
     canvas.style.cursor = cursor
   }
-  function handleCanvasDown (e) {
-    if (animState.hoveredButtonIndex !== -1) {
-      isMouseDown = true
-    }
+  function handleCanvasDown(e) {
+    if (animState.hoveredButtonIndex !== -1) isMouseDown = true
   }
-  async function handleCanvasUp (e) {
+  async function handleCanvasUp(e) {
     isMouseDown = false
     if (animState.hoveredButtonIndex === -1) return
     const btn = buttons[animState.hoveredButtonIndex]
@@ -1051,11 +1277,8 @@ document.addEventListener('DOMContentLoaded', () => {
       window.open(targetUrl, '_blank')
     } else if (type === 'action') {
       if (action === 'copy') {
-        try {
-          await navigator.clipboard.writeText(currentSelection)
-        } catch (err) {
-          console.error('Copy failed:', err)
-        }
+        try { await navigator.clipboard.writeText(currentSelection) }
+        catch (err) { console.error('Copy failed:', err) }
       } else if (action === 'paste') {
         try {
           const text = await navigator.clipboard.readText()
@@ -1063,14 +1286,13 @@ document.addEventListener('DOMContentLoaded', () => {
             selectionRange.deleteContents()
             selectionRange.insertNode(document.createTextNode(text))
           }
-        } catch (err) {
-          console.error(err)
-        }
+        } catch (err) { console.error(err) }
       }
     }
     hideToast()
   }
-  function roundRect (ctx, x, y, w, h, r) {
+  // --- Drawing Utilities ---
+  function roundRect(ctx, x, y, w, h, r) {
     if (w < 2 * r) r = w / 2
     if (h < 2 * r) r = h / 2
     ctx.beginPath()
@@ -1081,6 +1303,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.arcTo(x, y, x + w, y, r)
     ctx.closePath()
   }
+  // --- Bootstrap ---
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init)
   } else {

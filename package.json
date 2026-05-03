@@ -1,10 +1,11 @@
 {
   "name": "toast-extension",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "Customizable floating action menu for text selections.",
   "scripts": {
     "build": "node build.js",
-    "watch": "node build.js --watch"
+    "dev": "node build.js --dev",
+    "sum": "repomix --include **/*.js,**/*.html,**/*.json --ignore node_modules,docs,dist --output docs/toast.xml"
   },
   "dependencies": {
     "esbuild": "^0.20.0"

@@ -10,16 +10,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- DEFAULT CONFIG (aligned with content.js) ---
   const defaultConfig = {
     style: {
-      bgColor: '#090b10',
+      bgColor: '#1b1c1d',
       bgOpacity: 0.75,
-      hoverColor: '#57595c',
+      hoverColor: '#404040',
       hoverOpacity: 0.2,
-      borderRadius: 16,
-      buttonSize: 34,
-      buttonSpacing: 6,
+      borderRadius: 13,
+      iconSize: 18,
+      iconPadding: 5,
+      buttonSpacing: 4,
       padding: 6,
-      iconSize: 20,
-      animSpeed: 0.2,
       hoverScale: 1.15,
       activeScale: 0.9,
       iconLift: 3
@@ -55,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     renderUI()
   })
-  function renderUI () {
+  function renderUI() {
     elements.styleInputs.forEach(input => {
       const key = input.dataset.key
       if (currentConfig.style[key] !== undefined) {
@@ -139,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     attachListeners()
   }
-  function attachListeners () {
+  function attachListeners() {
     document.querySelectorAll('.btn-remove').forEach(el => {
       el.addEventListener('click', e => {
         currentConfig.buttons.splice(e.target.dataset.index, 1)

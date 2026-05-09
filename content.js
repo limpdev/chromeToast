@@ -1,5 +1,7 @@
 // content.js - Toast Selection Popup (Hybrid DOM + Canvas)
-(function () {
+import TurndownService from 'turndown'
+import { gfm } from 'turndown-plugin-gfm'
+;(function () {
   'use strict'
   // --- Global State ---
   let toastEl, canvas, ctx
@@ -33,7 +35,7 @@
   const HOVER_STIFFNESS = 320
   const HOVER_DAMPING = 26
   let lastTime = null
-  function stepSpring(spring, target, stiffness, damping, dt) {
+  function stepSpring (spring, target, stiffness, damping, dt) {
     const force = -stiffness * (spring.val - target)
     const dampen = -damping * spring.vel
     spring.vel += (force + dampen) * dt
@@ -68,6 +70,14 @@
         icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.556 13.218a2.67 2.67 0 01-3.774-3.774l2.359-2.36a2.67 2.67 0 013.628-.135m-.325-3.167a2.669 2.669 0 113.774 3.774l-2.359 2.36a2.67 2.67 0 01-3.628.135"/><path d="M10.5 3c-3.287 0-4.931 0-6.037.908a4 4 0 00-.555.554C3 5.57 3 7.212 3 10.5V13c0 3.771 0 5.657 1.172 6.828S7.229 21 11 21h2.5c3.287 0 4.931 0 6.038-.908q.304-.25.554-.554C21 18.43 21 16.788 21 13.5"/></g></svg>'
       },
       {
+        id: 'markdown',
+        type: 'action',
+        action: 'markdown',
+        markdownSource: 'selection',
+        contexts: ['text'],
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="#d5d5d5" d="M3 3h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1m4 12.5v-4l2 2l2-2v4h2v-7h-2l-2 2l-2-2H5v7zm11-3v-4h-2v4h-2l3 3l3-3z"/></svg>'
+      },
+      {
         id: 'google-text',
         type: 'link',
         url: 'https://www.google.com/search?q=%s',
@@ -83,25 +93,50 @@
       }
     ]
   }
+  // --- Markdown Conversion ---
+  const turndownService = new TurndownService({
+    headingStyle: 'atx',
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    fence: '```',
+    hr: '---',
+    linkStyle: 'inlined'
+  })
+  turndownService.use(gfm)
+
+  // Strip elements that are invisible or purely presentational
+  turndownService.addRule('removeHidden', {
+    filter: el =>
+      el.style &&
+      (el.style.display === 'none' || el.style.visibility === 'hidden'),
+    replacement: () => ''
+  })
+
+  // Preserve <br> as a markdown line break
+  turndownService.addRule('lineBreak', {
+    filter: 'br',
+    replacement: () => '  \n'
+  })
+
   let config = JSON.parse(JSON.stringify(defaultConfig))
   // --- Helpers ---
   const hexToRgbCache = new Map()
-  function hexToRgb(hex) {
+  function hexToRgb (hex) {
     if (hexToRgbCache.has(hex)) return hexToRgbCache.get(hex)
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
     const rgb = result
       ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-      }
+          r: parseInt(result[1], 16),
+          g: parseInt(result[2], 16),
+          b: parseInt(result[3], 16)
+        }
       : { r: 0, g: 0, b: 0 }
     hexToRgbCache.set(hex, rgb)
     return rgb
   }
   // Resolves an <img> src to an absolute URL.
   // Returns null if the src is a data: or blob: URI (not usable by remote engines).
-  function resolveImageUrl(src) {
+  function resolveImageUrl (src) {
     if (!src) return null
     if (src.startsWith('data:') || src.startsWith('blob:')) return null
     try {
@@ -111,7 +146,7 @@
     }
   }
   // --- Initialization ---
-  function init() {
+  function init () {
     chrome.storage.sync.get(['canvasToastConfig'], result => {
       applyConfig(result.canvasToastConfig)
       setupDOM()
@@ -127,7 +162,7 @@
       }
     })
   }
-  function applyConfig(newConfig) {
+  function applyConfig (newConfig) {
     if (!newConfig) return
     config.buttons =
       newConfig.buttons && newConfig.buttons.length > 0
@@ -138,7 +173,7 @@
     }
   }
   // --- DOM Setup ---
-  function setupDOM() {
+  function setupDOM () {
     if (toastEl && document.body.contains(toastEl)) {
       document.body.removeChild(toastEl)
     }
@@ -167,7 +202,7 @@
     document.body.appendChild(toastEl)
     ctx = canvas.getContext('2d', { alpha: true })
   }
-  function applyWrapperStyles() {
+  function applyWrapperStyles () {
     if (!toastEl) return
     const { style } = config
     const bgRgb = hexToRgb(style.bgColor)
@@ -175,7 +210,7 @@
     toastEl.style.borderRadius = style.borderRadius + 'px'
   }
   // Replace attachEvents() with:
-  function attachEvents() {
+  function attachEvents () {
     // Text selection
     document.addEventListener('mouseup', handleMouseUp)
     document.addEventListener('mousedown', handleMouseDown)
@@ -199,14 +234,14 @@
   }
   // Replace handleImageClick with these three functions:
 
-  function handleImageMouseOver(e) {
+  function handleImageMouseOver (e) {
     const target = e.target
     if (!(target instanceof HTMLImageElement)) return
     if (toastEl && toastEl.contains(target)) return
     hoveredImage = target
   }
 
-  function handleImageMouseOut(e) {
+  function handleImageMouseOut (e) {
     const target = e.target
     if (!(target instanceof HTMLImageElement)) return
     // If the cursor moves into the toast itself, keep hoveredImage alive
@@ -215,7 +250,7 @@
     if (target === hoveredImage) hoveredImage = null
   }
 
-  function handleKeyDown(e) {
+  function handleKeyDown (e) {
     // Only Control, not Ctrl+C / Ctrl+V / etc.
     if (e.key !== 'Control' || e.ctrlKey === false) return
     if (!hoveredImage) return
@@ -235,7 +270,7 @@
   }
   // --- Selection Handlers ---
   let selectionRafId = null
-  function handleMouseUp(e) {
+  function handleMouseUp (e) {
     if (toastEl && toastEl.contains(e.target)) return
     if (selectionRafId) cancelAnimationFrame(selectionRafId)
     selectionRafId = requestAnimationFrame(() => {
@@ -261,16 +296,16 @@
     })
   }
   // Replace handleMouseDown with:
-  function handleMouseDown(e) {
+  function handleMouseDown (e) {
     if (isVisible && toastEl && !toastEl.contains(e.target)) {
       hideToast()
     }
   }
-  function handleScroll() {
+  function handleScroll () {
     if (isVisible) hideToast()
   }
   // --- Toast Lifecycle ---
-  function getContextButtons() {
+  function getContextButtons () {
     return config.buttons.filter(btn => {
       const contexts = btn.contexts
       // Backwards compat: buttons without a contexts field show in text context only
@@ -278,14 +313,16 @@
       return contexts.includes(currentContext)
     })
   }
-  function showToast(rect) {
+  function showToast (rect) {
     const { style } = config
     const contextBtns = getContextButtons()
     const baseBtnSize = style.iconSize + style.iconPadding * 2
     const count = contextBtns.length
     if (count === 0) return
     const totalWidth =
-      style.padding * 2 + baseBtnSize * count + style.buttonSpacing * (count - 1)
+      style.padding * 2 +
+      baseBtnSize * count +
+      style.buttonSpacing * (count - 1)
     const totalHeight = style.padding * 2 + baseBtnSize
     const dpr = window.devicePixelRatio || 1
     canvas.style.width = totalWidth + 'px'
@@ -328,7 +365,7 @@
       requestAnimationFrame(draw)
     }
   }
-  function hideToast() {
+  function hideToast () {
     isVisible = false
     toastEl.style.pointerEvents = 'none'
     canvas.style.pointerEvents = 'none'
@@ -336,16 +373,17 @@
     isMouseDown = false
   }
   // --- Animation Loop ---
-  function startLoop() {
+  function startLoop () {
     if (animationId) cancelAnimationFrame(animationId)
     animationId = requestAnimationFrame(loop)
   }
-  function loop(timestamp) {
+  function loop (timestamp) {
     if (!lastTime) lastTime = timestamp
     const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
     lastTime = timestamp
     const opacityAtRest = Math.abs(springs.opacity.val)
-    Math.abs(springs.opacity.val) < 0.001 && Math.abs(springs.opacity.vel) < 0.001
+    Math.abs(springs.opacity.val) < 0.001 &&
+      Math.abs(springs.opacity.vel) < 0.001
     if (!isVisible && opacityAtRest && springs.opacity.val < 0.001) {
       animationId = null
       toastEl.style.display = 'none'
@@ -355,10 +393,16 @@
     draw()
     animationId = requestAnimationFrame(loop)
   }
-  function updateState(dt) {
+  function updateState (dt) {
     const targetOpacity = isVisible ? 1 : 0
     const targetScale = isVisible ? 1 : 0.9
-    stepSpring(springs.opacity, targetOpacity, SPRING_STIFFNESS, SPRING_DAMPING, dt)
+    stepSpring(
+      springs.opacity,
+      targetOpacity,
+      SPRING_STIFFNESS,
+      SPRING_DAMPING,
+      dt
+    )
     stepSpring(springs.scale, targetScale, SPRING_STIFFNESS, SPRING_DAMPING, dt)
     toastEl.style.opacity = springs.opacity.val
     toastEl.style.transform = `scale(${springs.scale.val})`
@@ -389,7 +433,7 @@
       animState.buttonActive[i] = sb.active.val
     })
   }
-  function draw() {
+  function draw () {
     const { style } = config
     const contextBtns = getContextButtons()
     const dpr = window.devicePixelRatio || 1
@@ -414,7 +458,14 @@
       if (hoverVal > 0.001) {
         ctx.fillStyle = style.hoverColor
         ctx.globalAlpha = style.hoverOpacity * hoverVal
-        roundRect(ctx, bx, by, currentBtnSize, currentBtnSize, style.borderRadius)
+        roundRect(
+          ctx,
+          bx,
+          by,
+          currentBtnSize,
+          currentBtnSize,
+          style.borderRadius
+        )
         ctx.fill()
         ctx.globalAlpha = 1
       }
@@ -433,13 +484,13 @@
     })
   }
   // --- Icon Loading ---
-  function svgToDataUri(svgStr) {
+  function svgToDataUri (svgStr) {
     return (
       'data:image/svg+xml;charset=utf-8;base64,' +
       window.btoa(unescape(encodeURIComponent(svgStr)))
     )
   }
-  function loadSingleIcon(btn) {
+  function loadSingleIcon (btn) {
     return new Promise(resolve => {
       const img = new Image()
       let src = btn.icon || ''
@@ -459,7 +510,7 @@
       img.src = src
     })
   }
-  function loadIcons() {
+  function loadIcons () {
     loadedIcons = {}
     iconsReady = false
     const total = config.buttons.length
@@ -484,24 +535,29 @@
     })
   }
   // --- Mouse Interaction ---
-  function handleMouseMove(e) {
+  function handleMouseMove (e) {
     if (!isVisible) return
     const rect = canvas.getBoundingClientRect()
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
     let hoveredIndex = -1
     buttons.forEach((btn, i) => {
-      if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+      if (
+        mx >= btn.x &&
+        mx <= btn.x + btn.w &&
+        my >= btn.y &&
+        my <= btn.y + btn.h
+      ) {
         hoveredIndex = i
       }
     })
     animState.hoveredButtonIndex = hoveredIndex
     canvas.style.cursor = hoveredIndex !== -1 ? 'pointer' : 'default'
   }
-  function handleCanvasDown() {
+  function handleCanvasDown () {
     if (animState.hoveredButtonIndex !== -1) isMouseDown = true
   }
-  async function handleCanvasUp() {
+  async function handleCanvasUp () {
     isMouseDown = false
     if (animState.hoveredButtonIndex === -1) return
     const btn = buttons[animState.hoveredButtonIndex]
@@ -527,12 +583,14 @@
         } catch (err) {
           console.error('[Toast] Paste failed:', err)
         }
+      } else if (action === 'markdown') {
+        await handleMarkdownCopy(btn.data)
       }
     }
     hideToast()
   }
   // --- Action Handlers ---
-  function handleImageSearch(urlTemplate) {
+  function handleImageSearch (urlTemplate) {
     if (!imageContext.isAccessible || !imageContext.resolvedUrl) {
       // data: or blob: URI — can't be fetched by remote engines
       console.warn(
@@ -546,7 +604,51 @@
     )
     window.open(targetUrl, '_blank')
   }
-  async function handleCopy() {
+  async function handleMarkdownCopy (btn) {
+    const source = btn.markdownSource || 'selection'
+    let markdown = ''
+
+    if (source === 'page') {
+      const clone = document.body.cloneNode(true)
+
+      // Strip noisy, non-content elements
+      const noisy = [
+        'script',
+        'style',
+        'noscript',
+        'iframe',
+        'nav',
+        'header',
+        'footer',
+        'aside',
+        '[aria-hidden="true"]'
+      ]
+      noisy.forEach(sel => {
+        clone.querySelectorAll(sel).forEach(el => el.remove())
+      })
+
+      // Prepend page title as an h1
+      const title = document.title.trim()
+      const body = turndownService.turndown(clone.innerHTML)
+      markdown = title ? `# ${title}\n\n${body}` : body
+    } else {
+      // Selection mode — preserve structure by working from the range's HTML
+      if (!selectionRange) return
+      const fragment = selectionRange.cloneContents()
+      const wrapper = document.createElement('div')
+      wrapper.appendChild(fragment)
+      markdown = turndownService.turndown(wrapper.innerHTML)
+    }
+
+    if (!markdown.trim()) return
+
+    try {
+      await navigator.clipboard.writeText(markdown)
+    } catch (err) {
+      console.error('[Toast] Markdown copy failed:', err)
+    }
+  }
+  async function handleCopy () {
     if (currentContext === 'image') {
       await copyImage()
     } else {
@@ -557,7 +659,7 @@
       }
     }
   }
-  async function copyImage() {
+  async function copyImage () {
     const src = imageContext.resolvedUrl || imageContext.src
     if (!src) return
     // data: URI — decode and write directly, no fetch needed
@@ -565,7 +667,9 @@
       try {
         const res = await fetch(src)
         const blob = await res.blob()
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ])
       } catch (err) {
         console.error('[Toast] Copy image (data URI) failed:', err)
       }
@@ -580,10 +684,14 @@
       const blob = await res.blob()
       // Normalise to PNG since ClipboardItem only reliably accepts image/png
       const pngBlob = await normaliseToPng(blob)
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': pngBlob })
+      ])
     } catch {
       // CORS or fetch failure — copy the URL instead as a graceful fallback
-      console.warn('[Toast] Could not fetch image for clipboard, copying URL instead.')
+      console.warn(
+        '[Toast] Could not fetch image for clipboard, copying URL instead.'
+      )
       try {
         await navigator.clipboard.writeText(src)
       } catch (err) {
@@ -592,7 +700,7 @@
     }
   }
   // Draws any image blob onto an offscreen canvas and exports as PNG
-  function normaliseToPng(blob) {
+  function normaliseToPng (blob) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(blob)
       const img = new Image()
@@ -616,7 +724,7 @@
     })
   }
   // --- Drawing Utilities ---
-  function roundRect(ctx, x, y, w, h, r) {
+  function roundRect (ctx, x, y, w, h, r) {
     if (w < 2 * r) r = w / 2
     if (h < 2 * r) r = h / 2
     ctx.beginPath()

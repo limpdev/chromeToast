@@ -8,7 +8,9 @@
     "sum": "repomix --include **/*.js,**/*.html,**/*.json --ignore node_modules,docs,dist --output docs/toast.xml"
   },
   "dependencies": {
-    "esbuild": "^0.20.0"
+    "esbuild": "^0.20.0",
+    "turndown": "^7.2.0",
+    "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
     "archiver": "^7.0.0"

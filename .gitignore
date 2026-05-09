@@ -10,7 +10,7 @@ pids
 *.pid.lock
 docs/*
 dist/
-*.zip
+extension.zip
 
 # Logs & environment
 logs

@@ -296,13 +296,34 @@ if (isDev) {
 }
 </file>
 
+<file path="package.json">
+{
+  "name": "toast-extension",
+  "version": "3.0.0",
+  "description": "Customizable floating action menu for text selections.",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "node build.js --dev",
+    "sum": "repomix --include **/*.js,**/*.html,**/*.json --ignore node_modules,docs,dist --output docs/toast.xml"
+  },
+  "dependencies": {
+    "esbuild": "^0.20.0",
+    "turndown": "^7.2.0",
+    "turndown-plugin-gfm": "^1.0.2"
+  },
+  "devDependencies": {
+    "archiver": "^7.0.0"
+  }
+}
+</file>
+
 <file path="popup.html">
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Toast Settings</title>
+  <title>Toast Preferences</title>
   <style>
     :root {
       --bg-color: #0f172a;
@@ -376,12 +397,14 @@ if (isDev) {
       cursor: pointer;
       background: none;
       border-radius: 4px;
+      appearance: none;
       -webkit-appearance: none;
     }
     input[type="range"] {
       width: 110px;
       height: 4px;
       border-radius: 2px;
+      appearance: none;
       -webkit-appearance: none;
       background: var(--border);
     }
@@ -503,15 +526,63 @@ if (isDev) {
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
+    .context-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .checkbox-group {
+      display: flex;
+      gap: 12px;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+    .checkbox-label:hover {
+      color: var(--text);
+    }
+    input[type="checkbox"] {
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .preset-picker {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-top: 4px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .preset-row {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .preset-row:hover:not(:disabled) {
+      background: var(--border);
+    }
+    .preset-row--added {
+      color: var(--text-muted);
+      cursor: default;
+    }
   </style>
 </head>
 <body>
-  <h2>
-    <svg fill="currentColor" viewBox="0 0 24 24">
-      <path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2m0 16H5V5h14v14z" />
-    </svg>
-    Toast Configuration
-  </h2>
+  <h4 style="letter-spacing: 0.05em;justify-self: center;">
+    Where The <s style="font-style: italic;opacity: .3;"> Sausage </s><strong><u> Toast </u></strong> Is Made
+  </h4>
   <!-- Visual Style -->
   <div class="section">
     <span class="section-title">Visual Style</span>
@@ -607,7 +678,12 @@ if (isDev) {
   <div class="section">
     <span class="section-title">Actions & Links</span>
     <div id="buttonList"></div>
-    <button id="addBtn" class="main-btn btn-secondary">+ Add Action</button>
+    <div class="grid-2">
+      <button id="addBtn" class="main-btn btn-secondary">+ Add Action</button>
+      <button id="addImageSearchBtn" class="main-btn btn-secondary">
+        + Image Search
+      </button>
+    </div>
   </div>
   <button id="save" class="main-btn btn-primary">Save Changes</button>
   <div id="status">Settings Saved!</div>
@@ -616,36 +692,17 @@ if (isDev) {
 </html>
 </file>
 
-<file path="package.json">
-{
-  "name": "toast-extension",
-  "version": "3.0.0",
-  "description": "Customizable floating action menu for text selections.",
-  "scripts": {
-    "build": "node build.js",
-    "dev": "node build.js --dev",
-    "sum": "repomix --include **/*.js,**/*.html,**/*.json --ignore node_modules,docs,dist --output docs/toast.xml"
-  },
-  "dependencies": {
-    "esbuild": "^0.20.0"
-  },
-  "devDependencies": {
-    "archiver": "^7.0.0"
-  }
-}
-</file>
-
 <file path="popup.js">
 // popup.js
 document.addEventListener('DOMContentLoaded', () => {
   const elements = {
     buttonList: document.getElementById('buttonList'),
     addBtn: document.getElementById('addBtn'),
+    addImageSearchBtn: document.getElementById('addImageSearchBtn'),
     saveBtn: document.getElementById('save'),
     status: document.getElementById('status'),
     styleInputs: document.querySelectorAll('.style-input')
   }
-  // --- DEFAULT CONFIG (aligned with content.js) ---
   const defaultConfig = {
     style: {
       bgColor: '#1b1c1d',
@@ -666,33 +723,80 @@ document.addEventListener('DOMContentLoaded', () => {
         id: 'copy',
         type: 'action',
         action: 'copy',
+        contexts: ['text', 'image'],
         icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.556 13.218a2.67 2.67 0 01-3.774-3.774l2.359-2.36a2.67 2.67 0 013.628-.135m-.325-3.167a2.669 2.669 0 113.774 3.774l-2.359 2.36a2.67 2.67 0 01-3.628.135"/><path d="M10.5 3c-3.287 0-4.931 0-6.037.908a4 4 0 00-.555.554C3 5.57 3 7.212 3 10.5V13c0 3.771 0 5.657 1.172 6.828S7.229 21 11 21h2.5c3.287 0 4.931 0 6.038-.908q.304-.25.554-.554C21 18.43 21 16.788 21 13.5"/></g></svg>'
       },
       {
-        id: 'google',
+        id: 'markdown',
+        type: 'action',
+        action: 'markdown',
+        markdownSource: 'selection',
+        contexts: ['text'],
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="#d5d5d5" d="M3 3h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1m4 12.5v-4l2 2l2-2v4h2v-7h-2l-2 2l-2-2H5v7zm11-3v-4h-2v4h-2l3 3l3-3z"/></svg>'
+      },
+      {
+        id: 'google-text',
         type: 'link',
         url: 'https://www.google.com/search?q=%s',
+        contexts: ['text'],
         icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5"><circle cx="11" cy="11" r="6"/><path stroke-linecap="round" d="M11 8a3 3 0 00-3 3m12 9l-3-3"/></g></svg>'
+      },
+      {
+        id: 'google-lens',
+        type: 'image-search',
+        url: 'https://lens.google.com/uploadbyurl?url=%s',
+        contexts: ['image'],
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M3 9V6.5A2.5 2.5 0 015.5 4H8M3 15v2.5A2.5 2.5 0 005.5 20H8m8-16h2.5A2.5 2.5 0 0121 6.5V9m0 6v2.5a2.5 2.5 0 01-2.5 2.5H16"/></g></svg>'
       }
     ]
   }
+  // Image search engine presets for the "Add Image Search" quick-add menu
+  const IMAGE_SEARCH_PRESETS = [
+    {
+      label: 'Google Lens',
+      id: 'google-lens',
+      url: 'https://lens.google.com/uploadbyurl?url=%s',
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M3 9V6.5A2.5 2.5 0 015.5 4H8M3 15v2.5A2.5 2.5 0 005.5 20H8m8-16h2.5A2.5 2.5 0 0121 6.5V9m0 6v2.5a2.5 2.5 0 01-2.5 2.5H16"/></g></svg>'
+    },
+    {
+      label: 'Yandex Images',
+      id: 'yandex-image',
+      url: 'https://yandex.com/images/search?rpt=imageview&url=%s',
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><path stroke-linecap="round" d="M12 8v4l3 3"/></g></svg>'
+    },
+    {
+      label: 'Bing Visual Search',
+      id: 'bing-image',
+      url: 'https://www.bing.com/images/search?view=detailv2&q=imgurl:%s',
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><path stroke-linecap="round" d="M5 3v18l5-3 4 3 5-4V8l-5-4-4 3z"/></g></svg>'
+    },
+    {
+      label: 'TinEye',
+      id: 'tineye',
+      url: 'https://www.tineye.com/search?url=%s',
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="M11 8v3h3m5 5l-3-3"/></g></svg>'
+    }
+  ]
   let currentConfig = null
-  // Load Settings
   chrome.storage.sync.get(['canvasToastConfig'], result => {
     const saved = result.canvasToastConfig || {}
     currentConfig = {
-      style: {
-        ...defaultConfig.style,
-        ...(saved.style || {})
-      },
+      style: { ...defaultConfig.style, ...(saved.style || {}) },
       buttons:
         saved.buttons && saved.buttons.length > 0
           ? saved.buttons
           : defaultConfig.buttons
     }
+    // Backfill contexts on any legacy buttons that are missing it
+    currentConfig.buttons = currentConfig.buttons.map(btn => ({
+      ...btn,
+      contexts:
+        btn.contexts && btn.contexts.length > 0 ? btn.contexts : ['text']
+    }))
     renderUI()
   })
-  function renderUI() {
+  // --- Render ---
+  function renderUI () {
     elements.styleInputs.forEach(input => {
       const key = input.dataset.key
       if (currentConfig.style[key] !== undefined) {
@@ -704,100 +808,207 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!elements.buttonList) return
     elements.buttonList.innerHTML = ''
     currentConfig.buttons.forEach((btn, index) => {
-      const item = document.createElement('div')
-      item.className = 'btn-item'
-      const header = document.createElement('div')
-      header.className = 'btn-header'
-      const headerLabel = document.createElement('span')
-      headerLabel.textContent = `Action ${index + 1}`
-      const removeBtn = document.createElement('span')
-      removeBtn.className = 'btn-remove'
-      removeBtn.dataset.index = index
-      removeBtn.textContent = '✖'
-      header.appendChild(headerLabel)
-      header.appendChild(removeBtn)
-      item.appendChild(header)
-      const typeSelect = document.createElement('select')
-      typeSelect.className = 'config-input type-select'
-      typeSelect.dataset.field = 'type'
-      typeSelect.dataset.index = index
-      const actionOption = document.createElement('option')
-      actionOption.value = 'action'
-      actionOption.textContent = 'System Action'
-      actionOption.selected = btn.type === 'action'
-      const linkOption = document.createElement('option')
-      linkOption.value = 'link'
-      linkOption.textContent = 'Search / Link'
-      linkOption.selected = btn.type === 'link'
-      typeSelect.appendChild(actionOption)
-      typeSelect.appendChild(linkOption)
-      item.appendChild(typeSelect)
-      if (btn.type === 'action') {
-        const actionSelect = document.createElement('select')
-        actionSelect.className = 'config-input'
-        actionSelect.dataset.field = 'action'
-        actionSelect.dataset.index = index
-        const copyOpt = document.createElement('option')
-        copyOpt.value = 'copy'
-        copyOpt.textContent = 'Copy Text'
-        copyOpt.selected = btn.action === 'copy'
-        const pasteOpt = document.createElement('option')
-        pasteOpt.value = 'paste'
-        pasteOpt.textContent = 'Paste Text'
-        pasteOpt.selected = btn.action === 'paste'
-        actionSelect.appendChild(copyOpt)
-        actionSelect.appendChild(pasteOpt)
-        item.appendChild(actionSelect)
-      } else {
-        const urlInput = document.createElement('input')
-        urlInput.type = 'text'
-        urlInput.className = 'config-input'
-        urlInput.dataset.field = 'url'
-        urlInput.dataset.index = index
-        urlInput.value = btn.url || ''
-        urlInput.placeholder = 'https://google.com/search?q=%s'
-        item.appendChild(urlInput)
-        const urlHelper = document.createElement('span')
-        urlHelper.className = 'helper-text'
-        urlHelper.textContent = 'Use %s for selected text'
-        item.appendChild(urlHelper)
-      }
-      const iconHelper = document.createElement('span')
-      iconHelper.className = 'helper-text'
-      iconHelper.textContent = 'SVG Icon Code:'
-      item.appendChild(iconHelper)
-      const iconArea = document.createElement('textarea')
-      iconArea.className = 'config-input'
-      iconArea.dataset.field = 'icon'
-      iconArea.dataset.index = index
-      iconArea.textContent = btn.icon
-      item.appendChild(iconArea)
-      elements.buttonList.appendChild(item)
+      elements.buttonList.appendChild(buildButtonItem(btn, index))
     })
     attachListeners()
   }
-  function attachListeners() {
+  function buildButtonItem (btn, index) {
+    const item = document.createElement('div')
+    item.className = 'btn-item'
+    // Header
+    const header = document.createElement('div')
+    header.className = 'btn-header'
+    const headerLabel = document.createElement('span')
+    headerLabel.textContent = `Action ${index + 1}`
+    const removeBtn = document.createElement('span')
+    removeBtn.className = 'btn-remove'
+    removeBtn.dataset.index = index
+    removeBtn.textContent = '✖'
+    header.appendChild(headerLabel)
+    header.appendChild(removeBtn)
+    item.appendChild(header)
+    // Context checkboxes
+    item.appendChild(buildContextCheckboxes(btn, index))
+    // Type select
+    const typeSelect = document.createElement('select')
+    typeSelect.className = 'config-input type-select'
+    typeSelect.dataset.field = 'type'
+    typeSelect.dataset.index = index
+    ;[
+      { value: 'action', label: 'System Action' },
+      { value: 'link', label: 'Search / Link' },
+      { value: 'image-search', label: 'Image Search' }
+    ].forEach(({ value, label }) => {
+      const opt = document.createElement('option')
+      opt.value = value
+      opt.textContent = label
+      opt.selected = btn.type === value
+      typeSelect.appendChild(opt)
+    })
+    item.appendChild(typeSelect)
+    // Type-specific fields
+    if (btn.type === 'action') {
+      item.appendChild(buildActionSelect(btn, index))
+    } else if (btn.type === 'link') {
+      item.appendChild(
+        buildUrlInput(btn, index, 'https://google.com/search?q=%s')
+      )
+    } else if (btn.type === 'image-search') {
+      item.appendChild(
+        buildUrlInput(btn, index, 'https://lens.google.com/uploadbyurl?url=%s')
+      )
+      const hint = document.createElement('span')
+      hint.className = 'helper-text'
+      hint.textContent = 'Use %s for the image URL'
+      item.appendChild(hint)
+    }
+    if (btn.type === 'action') {
+      item.appendChild(buildActionSelect(btn, index))
+      if (btn.action === 'markdown') {
+        item.appendChild(buildMarkdownSourceSelect(btn, index))
+      }
+    }
+    // Icon
+    const iconHelper = document.createElement('span')
+    iconHelper.className = 'helper-text'
+    iconHelper.textContent = 'SVG Icon Code:'
+    item.appendChild(iconHelper)
+    const iconArea = document.createElement('textarea')
+    iconArea.className = 'config-input'
+    iconArea.dataset.field = 'icon'
+    iconArea.dataset.index = index
+    iconArea.textContent = btn.icon || ''
+    item.appendChild(iconArea)
+    return item
+  }
+  function buildContextCheckboxes (btn, index) {
+    const wrapper = document.createElement('div')
+    wrapper.className = 'context-row'
+    const label = document.createElement('span')
+    label.className = 'helper-text'
+    label.textContent = 'Show in:'
+    wrapper.appendChild(label)
+    const checkboxWrapper = document.createElement('div')
+    checkboxWrapper.className = 'checkbox-group'
+    ;[
+      { value: 'text', label: 'Text' },
+      { value: 'image', label: 'Image' }
+    ].forEach(({ value, label: cbLabel }) => {
+      const cbLabel_el = document.createElement('label')
+      cbLabel_el.className = 'checkbox-label'
+      const cb = document.createElement('input')
+      cb.type = 'checkbox'
+      cb.className = 'context-checkbox'
+      cb.dataset.index = index
+      cb.dataset.context = value
+      cb.checked = (btn.contexts || ['text']).includes(value)
+      cbLabel_el.appendChild(cb)
+      cbLabel_el.appendChild(document.createTextNode(' ' + cbLabel))
+      checkboxWrapper.appendChild(cbLabel_el)
+    })
+    wrapper.appendChild(checkboxWrapper)
+    return wrapper
+  }
+  function buildActionSelect (btn, index) {
+    const sel = document.createElement('select')
+    sel.className = 'config-input'
+    sel.dataset.field = 'action'
+    sel.dataset.index = index
+    ;[
+      { value: 'copy', label: 'Copy' },
+      { value: 'paste', label: 'Paste' },
+      { value: 'markdown', label: 'As Markdown' }
+    ].forEach(({ value, label }) => {
+      const opt = document.createElement('option')
+      opt.value = value
+      opt.textContent = label
+      opt.selected = btn.action === value
+      sel.appendChild(opt)
+    })
+    return sel
+  }
+  // Helper function for Markdown conversion
+  function buildMarkdownSourceSelect (btn, index) {
+    const label = document.createElement('span')
+    label.className = 'helper-text'
+    label.textContent = 'Markdown source:'
+    const sel = document.createElement('select')
+    sel.className = 'config-input'
+    sel.dataset.field = 'markdownSource'
+    sel.dataset.index = index
+    ;[
+      { value: 'selection', label: 'Highlighted Text' },
+      { value: 'page', label: 'Entire Page' }
+    ].forEach(({ value, label: optLabel }) => {
+      const opt = document.createElement('option')
+      opt.value = value
+      opt.textContent = optLabel
+      opt.selected = (btn.markdownSource || 'selection') === value
+      sel.appendChild(opt)
+    })
+    const wrapper = document.createElement('div')
+    wrapper.appendChild(label)
+    wrapper.appendChild(sel)
+    return wrapper
+  }
+  function buildUrlInput (btn, index, placeholder) {
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'config-input'
+    input.dataset.field = 'url'
+    input.dataset.index = index
+    input.value = btn.url || ''
+    input.placeholder = placeholder
+    return input
+  }
+  // --- Listeners ---
+  function attachListeners () {
     document.querySelectorAll('.btn-remove').forEach(el => {
       el.addEventListener('click', e => {
-        currentConfig.buttons.splice(e.target.dataset.index, 1)
+        currentConfig.buttons.splice(Number(e.target.dataset.index), 1)
         renderUI()
+      })
+    })
+    document.querySelectorAll('.context-checkbox').forEach(cb => {
+      cb.addEventListener('change', e => {
+        const idx = Number(e.target.dataset.index)
+        const ctx = e.target.dataset.context
+        const btn = currentConfig.buttons[idx]
+        if (!btn.contexts) btn.contexts = []
+        if (e.target.checked) {
+          if (!btn.contexts.includes(ctx)) btn.contexts.push(ctx)
+        } else {
+          btn.contexts = btn.contexts.filter(c => c !== ctx)
+        }
       })
     })
     document.querySelectorAll('.config-input').forEach(el => {
       el.addEventListener('change', e => {
-        const idx = e.target.dataset.index
+        const idx = Number(e.target.dataset.index)
         const field = e.target.dataset.field
+        if (field === undefined || idx === undefined || isNaN(idx)) return
         const btn = currentConfig.buttons[idx]
+        if (!btn) return
         if (field === 'type') {
           btn.type = e.target.value
           if (btn.type === 'link') {
             btn.url = 'https://google.com/search?q=%s'
             delete btn.action
-          }
-          if (btn.type === 'action') {
+          } else if (btn.type === 'image-search') {
+            btn.url = 'https://lens.google.com/uploadbyurl?url=%s'
+            // Default new image-search buttons to image context
+            if (!btn.contexts || btn.contexts.length === 0) {
+              btn.contexts = ['image']
+            }
+            delete btn.action
+          } else if (btn.type === 'action') {
             btn.action = 'copy'
             delete btn.url
           }
+          renderUI()
+        } else if (field === 'action') {
+          btn.action = e.target.value
+          if (btn.action !== 'markdown') delete btn.markdownSource
           renderUI()
         } else {
           btn[field] = e.target.value
@@ -817,29 +1028,72 @@ document.addEventListener('DOMContentLoaded', () => {
       })
     })
   }
+  // --- Add Buttons ---
   elements.addBtn.addEventListener('click', () => {
     currentConfig.buttons.push({
       id: 'btn-' + Date.now(),
       type: 'link',
       url: 'https://',
+      contexts: ['text'],
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>'
     })
     renderUI()
   })
+  // Dropdown for image search presets
+  elements.addImageSearchBtn.addEventListener('click', e => {
+    // Toggle a small preset picker beneath the button
+    const existing = document.getElementById('preset-picker')
+    if (existing) {
+      existing.remove()
+      return
+    }
+    const picker = document.createElement('div')
+    picker.id = 'preset-picker'
+    picker.className = 'preset-picker'
+    IMAGE_SEARCH_PRESETS.forEach(preset => {
+      // Disable if already in the list
+      const alreadyAdded = currentConfig.buttons.some(b => b.id === preset.id)
+      const row = document.createElement('button')
+      row.className = 'preset-row' + (alreadyAdded ? ' preset-row--added' : '')
+      row.disabled = alreadyAdded
+      row.textContent = alreadyAdded ? `${preset.label} ✓` : preset.label
+      row.addEventListener('click', () => {
+        currentConfig.buttons.push({
+          id: preset.id,
+          type: 'image-search',
+          url: preset.url,
+          contexts: ['image'],
+          icon: preset.icon
+        })
+        picker.remove()
+        renderUI()
+      })
+      picker.appendChild(row)
+    })
+    // Insert after the button
+    elements.addImageSearchBtn.insertAdjacentElement('afterend', picker)
+  })
+  // Close preset picker on outside click
+  document.addEventListener('click', e => {
+    const picker = document.getElementById('preset-picker')
+    if (
+      picker &&
+      !picker.contains(e.target) &&
+      e.target !== elements.addImageSearchBtn
+    ) {
+      picker.remove()
+    }
+  })
+  // --- Save ---
   elements.saveBtn.addEventListener('click', () => {
     elements.saveBtn.textContent = 'Saving...'
-    chrome.storage.sync.set(
-      {
-        canvasToastConfig: currentConfig
-      },
-      () => {
-        elements.saveBtn.textContent = 'Save Changes'
-        elements.status.style.opacity = '1'
-        setTimeout(() => {
-          elements.status.style.opacity = '0'
-        }, 2000)
-      }
-    )
+    chrome.storage.sync.set({ canvasToastConfig: currentConfig }, () => {
+      elements.saveBtn.textContent = 'Save Changes'
+      elements.status.style.opacity = '1'
+      setTimeout(() => {
+        elements.status.style.opacity = '0'
+      }, 2000)
+    })
   })
 })
 </file>
@@ -848,7 +1102,7 @@ document.addEventListener('DOMContentLoaded', () => {
 {
   "manifest_version": 3,
   "name": "Toast - Floating Selection Menu",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "A customizable floating action menu that appears when you select text.",
   "permissions": ["storage", "clipboardWrite"],
   "content_scripts": [
@@ -878,7 +1132,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <file path="content.js">
 // content.js - Toast Selection Popup (Hybrid DOM + Canvas)
-(function () {
+import TurndownService from 'turndown'
+import { gfm } from 'turndown-plugin-gfm'
+;(function () {
   'use strict'
   // --- Global State ---
   let toastEl, canvas, ctx
@@ -890,6 +1146,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let loadedIcons = {}
   let iconsReady = false
   let isMouseDown = false
+  // Context: 'text' | 'image'
+  let currentContext = 'text'
+  let imageContext = { src: null, resolvedUrl: null, isAccessible: true }
+  let hoveredImage = null // <img> element the cursor is currently over
   // Animation State
   const animState = {
     buttonHovers: [],
@@ -898,26 +1158,21 @@ document.addEventListener('DOMContentLoaded', () => {
     hoveredButtonIndex: -1,
     scale: 0.8
   }
-  // Spring state: each animated value gets { val, vel }
   const springs = {
     opacity: { val: 0, vel: 0 },
     scale: { val: 0.8, vel: 0 },
-    buttons: [] // populated in loadIcons: [{ hover: {val,vel}, active: {val,vel} }]
+    buttons: []
   }
-  // --- Spring Physics ---
-  // stiffness: how fast it snaps toward target
-  // damping:   how much it resists oscillation (>1 = overdamped/no bounce, ~0.6-0.8 = subtle bounce)
   const SPRING_STIFFNESS = 280
   const SPRING_DAMPING = 22
   const HOVER_STIFFNESS = 320
   const HOVER_DAMPING = 26
   let lastTime = null
-  function stepSpring(spring, target, stiffness, damping, dt) {
+  function stepSpring (spring, target, stiffness, damping, dt) {
     const force = -stiffness * (spring.val - target)
     const dampen = -damping * spring.vel
     spring.vel += (force + dampen) * dt
     spring.val += spring.vel * dt
-    // Snap to rest when close enough
     if (Math.abs(spring.val - target) < 0.001 && Math.abs(spring.vel) < 0.001) {
       spring.val = target
       spring.vel = 0
@@ -931,10 +1186,9 @@ document.addEventListener('DOMContentLoaded', () => {
       hoverColor: '#404040',
       hoverOpacity: 0.2,
       borderRadius: 13,
-      // buttonSize: 28,
-      // animSpeed: 0.15,
       padding: 6,
       iconSize: 18,
+      iconPadding: 5,
       buttonSpacing: 4,
       hoverScale: 1.15,
       activeScale: 0.9,
@@ -945,30 +1199,84 @@ document.addEventListener('DOMContentLoaded', () => {
         id: 'copy',
         type: 'action',
         action: 'copy',
+        contexts: ['text', 'image'],
         icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.556 13.218a2.67 2.67 0 01-3.774-3.774l2.359-2.36a2.67 2.67 0 013.628-.135m-.325-3.167a2.669 2.669 0 113.774 3.774l-2.359 2.36a2.67 2.67 0 01-3.628.135"/><path d="M10.5 3c-3.287 0-4.931 0-6.037.908a4 4 0 00-.555.554C3 5.57 3 7.212 3 10.5V13c0 3.771 0 5.657 1.172 6.828S7.229 21 11 21h2.5c3.287 0 4.931 0 6.038-.908q.304-.25.554-.554C21 18.43 21 16.788 21 13.5"/></g></svg>'
       },
       {
-        id: 'google',
+        id: 'markdown',
+        type: 'action',
+        action: 'markdown',
+        markdownSource: 'selection',
+        contexts: ['text'],
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="#d5d5d5" d="M3 3h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1m4 12.5v-4l2 2l2-2v4h2v-7h-2l-2 2l-2-2H5v7zm11-3v-4h-2v4h-2l3 3l3-3z"/></svg>'
+      },
+      {
+        id: 'google-text',
         type: 'link',
         url: 'https://www.google.com/search?q=%s',
+        contexts: ['text'],
         icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5"><circle cx="11" cy="11" r="6"/><path stroke-linecap="round" d="M11 8a3 3 0 00-3 3m12 9l-3-3"/></g></svg>'
+      },
+      {
+        id: 'google-lens',
+        type: 'image-search',
+        url: 'https://lens.google.com/uploadbyurl?url=%s',
+        contexts: ['image'],
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M3 9V6.5A2.5 2.5 0 015.5 4H8M3 15v2.5A2.5 2.5 0 005.5 20H8m8-16h2.5A2.5 2.5 0 0121 6.5V9m0 6v2.5a2.5 2.5 0 01-2.5 2.5H16"/></g></svg>'
       }
     ]
   }
+  // --- Markdown Conversion ---
+  const turndownService = new TurndownService({
+    headingStyle: 'atx',
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    fence: '```',
+    hr: '---',
+    linkStyle: 'inlined'
+  })
+  turndownService.use(gfm)
+  // Strip elements that are invisible or purely presentational
+  turndownService.addRule('removeHidden', {
+    filter: el =>
+      el.style &&
+      (el.style.display === 'none' || el.style.visibility === 'hidden'),
+    replacement: () => ''
+  })
+  // Preserve <br> as a markdown line break
+  turndownService.addRule('lineBreak', {
+    filter: 'br',
+    replacement: () => '  \n'
+  })
   let config = JSON.parse(JSON.stringify(defaultConfig))
-  // --- hexToRgb (memoized) ---
+  // --- Helpers ---
   const hexToRgbCache = new Map()
-  function hexToRgb(hex) {
+  function hexToRgb (hex) {
     if (hexToRgbCache.has(hex)) return hexToRgbCache.get(hex)
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
     const rgb = result
-      ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
+      ? {
+          r: parseInt(result[1], 16),
+          g: parseInt(result[2], 16),
+          b: parseInt(result[3], 16)
+        }
       : { r: 0, g: 0, b: 0 }
     hexToRgbCache.set(hex, rgb)
     return rgb
   }
+  // Resolves an <img> src to an absolute URL.
+  // Returns null if the src is a data: or blob: URI (not usable by remote engines).
+  function resolveImageUrl (src) {
+    if (!src) return null
+    if (src.startsWith('data:') || src.startsWith('blob:')) return null
+    try {
+      return new URL(src, document.baseURI).href
+    } catch {
+      return null
+    }
+  }
   // --- Initialization ---
-  function init() {
+  function init () {
     chrome.storage.sync.get(['canvasToastConfig'], result => {
       applyConfig(result.canvasToastConfig)
       setupDOM()
@@ -984,17 +1292,18 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     })
   }
-  function applyConfig(newConfig) {
+  function applyConfig (newConfig) {
     if (!newConfig) return
-    config.buttons = (newConfig.buttons && newConfig.buttons.length > 0)
-      ? newConfig.buttons
-      : defaultConfig.buttons
+    config.buttons =
+      newConfig.buttons && newConfig.buttons.length > 0
+        ? newConfig.buttons
+        : defaultConfig.buttons
     if (newConfig.style) {
       config.style = { ...defaultConfig.style, ...newConfig.style }
     }
   }
   // --- DOM Setup ---
-  function setupDOM() {
+  function setupDOM () {
     if (toastEl && document.body.contains(toastEl)) {
       document.body.removeChild(toastEl)
     }
@@ -1023,17 +1332,25 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(toastEl)
     ctx = canvas.getContext('2d', { alpha: true })
   }
-  function applyWrapperStyles() {
+  function applyWrapperStyles () {
     if (!toastEl) return
     const { style } = config
     const bgRgb = hexToRgb(style.bgColor)
     toastEl.style.background = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`
     toastEl.style.borderRadius = style.borderRadius + 'px'
   }
-  function attachEvents() {
-    document.addEventListener('mouseup', handleSelectionChange)
-    document.addEventListener('mousedown', handleOutsideClick)
+  // Replace attachEvents() with:
+  function attachEvents () {
+    // Text selection
+    document.addEventListener('mouseup', handleMouseUp)
+    document.addEventListener('mousedown', handleMouseDown)
     document.addEventListener('scroll', handleScroll, { passive: true })
+    // Image hover tracking
+    document.addEventListener('mouseover', handleImageMouseOver)
+    document.addEventListener('mouseout', handleImageMouseOut)
+    // Ctrl+hover trigger
+    document.addEventListener('keydown', handleKeyDown)
+    // Canvas interactions
     canvas.addEventListener('mousemove', handleMouseMove)
     canvas.addEventListener('mousedown', handleCanvasDown)
     canvas.addEventListener('mouseup', handleCanvasUp)
@@ -1042,51 +1359,40 @@ document.addEventListener('DOMContentLoaded', () => {
       isMouseDown = false
     })
   }
-  // --- Icon Loading (Promise.all) ---
-  function svgToDataUri(svgStr) {
-    return 'data:image/svg+xml;charset=utf-8;base64,' +
-      window.btoa(unescape(encodeURIComponent(svgStr)))
+  // Replace handleImageClick with these three functions:
+  function handleImageMouseOver (e) {
+    const target = e.target
+    if (!(target instanceof HTMLImageElement)) return
+    if (toastEl && toastEl.contains(target)) return
+    hoveredImage = target
   }
-  function loadSingleIcon(btn) {
-    return new Promise(resolve => {
-      const img = new Image()
-      let src = btn.icon || ''
-      if (src.trim().startsWith('<svg')) {
-        try { src = svgToDataUri(src) } catch (e) {
-          console.error('Icon encoding failed', e)
-          return resolve(null)
-        }
-      }
-      img.onload = () => resolve({ id: btn.id, img })
-      img.onerror = () => {
-        console.warn(`Failed to load icon for ${btn.id}`)
-        resolve(null)
-      }
-      img.src = src
-    })
+  function handleImageMouseOut (e) {
+    const target = e.target
+    if (!(target instanceof HTMLImageElement)) return
+    // If the cursor moves into the toast itself, keep hoveredImage alive
+    // so the user can Ctrl+click a button without losing context
+    if (toastEl && toastEl.contains(e.relatedTarget)) return
+    if (target === hoveredImage) hoveredImage = null
   }
-  function loadIcons() {
-    loadedIcons = {}
-    iconsReady = false
-    const total = config.buttons.length
-    // Reset spring states to match button count
-    springs.buttons = config.buttons.map(() => ({
-      hover: { val: 0, vel: 0 },
-      active: { val: 0, vel: 0 }
-    }))
-    // Keep animState arrays in sync (still used for hit-testing)
-    animState.buttonHovers = new Array(total).fill(0)
-    animState.buttonActive = new Array(total).fill(0)
-    if (total === 0) { iconsReady = true; return }
-    Promise.all(config.buttons.map(loadSingleIcon)).then(results => {
-      results.forEach(r => { if (r) loadedIcons[r.id] = r.img })
-      iconsReady = true
-      if (isVisible) requestAnimationFrame(draw)
-    })
+  function handleKeyDown (e) {
+    // Only Control, not Ctrl+C / Ctrl+V / etc.
+    if (e.key !== 'Control' || e.ctrlKey === false) return
+    if (!hoveredImage) return
+    const resolved = resolveImageUrl(hoveredImage.src)
+    imageContext = {
+      src: hoveredImage.src,
+      resolvedUrl: resolved,
+      isAccessible: resolved !== null
+    }
+    currentContext = 'image'
+    window.getSelection()?.removeAllRanges()
+    currentSelection = ''
+    const rect = hoveredImage.getBoundingClientRect()
+    showToast(rect)
   }
-  // --- Selection Debounce (rAF-based) ---
+  // --- Selection Handlers ---
   let selectionRafId = null
-  function handleSelectionChange(e) {
+  function handleMouseUp (e) {
     if (toastEl && toastEl.contains(e.target)) return
     if (selectionRafId) cancelAnimationFrame(selectionRafId)
     selectionRafId = requestAnimationFrame(() => {
@@ -1095,7 +1401,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!sel || sel.rangeCount === 0) return
       const text = sel.toString().trim()
       if (text.length > 0) {
+        currentContext = 'text'
         currentSelection = text
+        imageContext = { src: null, resolvedUrl: null, isAccessible: true }
         try {
           selectionRange = sel.getRangeAt(0)
           const rect = selectionRange.getBoundingClientRect()
@@ -1109,20 +1417,34 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     })
   }
-  function handleOutsideClick(e) {
-    // Don't immediately hide — the mouseup handler will re-evaluate
-    if (isVisible && toastEl && !toastEl.contains(e.target)) { }
+  // Replace handleMouseDown with:
+  function handleMouseDown (e) {
+    if (isVisible && toastEl && !toastEl.contains(e.target)) {
+      hideToast()
+    }
   }
-  function handleScroll() {
+  function handleScroll () {
     if (isVisible) hideToast()
   }
   // --- Toast Lifecycle ---
-  function showToast(rect) {
+  function getContextButtons () {
+    return config.buttons.filter(btn => {
+      const contexts = btn.contexts
+      // Backwards compat: buttons without a contexts field show in text context only
+      if (!contexts || contexts.length === 0) return currentContext === 'text'
+      return contexts.includes(currentContext)
+    })
+  }
+  function showToast (rect) {
     const { style } = config
+    const contextBtns = getContextButtons()
     const baseBtnSize = style.iconSize + style.iconPadding * 2
-    const count = config.buttons.length
+    const count = contextBtns.length
+    if (count === 0) return
     const totalWidth =
-      style.padding * 2 + baseBtnSize * count + style.buttonSpacing * (count - 1)
+      style.padding * 2 +
+      baseBtnSize * count +
+      style.buttonSpacing * (count - 1)
     const totalHeight = style.padding * 2 + baseBtnSize
     const dpr = window.devicePixelRatio || 1
     canvas.style.width = totalWidth + 'px'
@@ -1134,11 +1456,17 @@ document.addEventListener('DOMContentLoaded', () => {
     toastEl.style.width = totalWidth + 'px'
     toastEl.style.height = totalHeight + 'px'
     applyWrapperStyles()
+    // For images, anchor to the top-center of the image.
+    // For text, anchor above the selection (falling back to below).
     let left = rect.left + rect.width / 2 - totalWidth / 2
-    let top = rect.top - totalHeight - 16
-    if (top < 0) top = rect.bottom + 16
+    let top =
+      currentContext === 'image'
+        ? rect.top - totalHeight - 16
+        : rect.top - totalHeight - 16
+    if (top < 8) top = rect.bottom + 16
     if (left < 10) left = 10
-    if (left + totalWidth > window.innerWidth - 10) left = window.innerWidth - totalWidth - 10
+    if (left + totalWidth > window.innerWidth - 10)
+      left = window.innerWidth - totalWidth - 10
     toastEl.style.left = left + 'px'
     toastEl.style.top = top + 'px'
     toastEl.style.display = 'block'
@@ -1146,7 +1474,6 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.style.pointerEvents = 'auto'
     if (!isVisible) {
       isVisible = true
-      // Kick springs from their collapsed state
       springs.opacity.val = 0
       springs.opacity.vel = 0
       springs.scale.val = 0.8
@@ -1155,9 +1482,12 @@ document.addEventListener('DOMContentLoaded', () => {
       toastEl.style.transform = 'scale(0.8)'
       lastTime = null
       startLoop()
+    } else {
+      // Already visible (e.g. re-clicked another image) — just redraw
+      requestAnimationFrame(draw)
     }
   }
-  function hideToast() {
+  function hideToast () {
     isVisible = false
     toastEl.style.pointerEvents = 'none'
     canvas.style.pointerEvents = 'none'
@@ -1165,18 +1495,17 @@ document.addEventListener('DOMContentLoaded', () => {
     isMouseDown = false
   }
   // --- Animation Loop ---
-  function startLoop() {
+  function startLoop () {
     if (animationId) cancelAnimationFrame(animationId)
-    animationId = null
     animationId = requestAnimationFrame(loop)
   }
-  function loop(timestamp) {
-    // Compute dt in seconds, clamped to avoid spiral of death on tab re-focus
+  function loop (timestamp) {
     if (!lastTime) lastTime = timestamp
     const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
     lastTime = timestamp
-    const opacityAtRest = Math.abs(springs.opacity.val) < 0.001 && Math.abs(springs.opacity.vel) < 0.001
-    const scaleAtRest = Math.abs(springs.scale.val - (isVisible ? 1 : 0.9)) < 0.001
+    const opacityAtRest = Math.abs(springs.opacity.val)
+    Math.abs(springs.opacity.val) < 0.001 &&
+      Math.abs(springs.opacity.vel) < 0.001
     if (!isVisible && opacityAtRest && springs.opacity.val < 0.001) {
       animationId = null
       toastEl.style.display = 'none'
@@ -1186,54 +1515,79 @@ document.addEventListener('DOMContentLoaded', () => {
     draw()
     animationId = requestAnimationFrame(loop)
   }
-  function updateState(dt) {
+  function updateState (dt) {
     const targetOpacity = isVisible ? 1 : 0
     const targetScale = isVisible ? 1 : 0.9
-    stepSpring(springs.opacity, targetOpacity, SPRING_STIFFNESS, SPRING_DAMPING, dt)
+    stepSpring(
+      springs.opacity,
+      targetOpacity,
+      SPRING_STIFFNESS,
+      SPRING_DAMPING,
+      dt
+    )
     stepSpring(springs.scale, targetScale, SPRING_STIFFNESS, SPRING_DAMPING, dt)
     toastEl.style.opacity = springs.opacity.val
     toastEl.style.transform = `scale(${springs.scale.val})`
-    // Sync legacy animState for draw() compatibility
     animState.opacity = springs.opacity.val
     animState.scale = springs.scale.val
-    config.buttons.forEach((_, i) => {
+    const contextBtns = getContextButtons()
+    // Ensure springs.buttons is sized to current context button count
+    while (springs.buttons.length < contextBtns.length) {
+      springs.buttons.push({
+        hover: { val: 0, vel: 0 },
+        active: { val: 0, vel: 0 }
+      })
+    }
+    contextBtns.forEach((_, i) => {
       const sb = springs.buttons[i]
       if (!sb) return
       const isHover = animState.hoveredButtonIndex === i
       const isActive = isHover && isMouseDown
       stepSpring(sb.hover, isHover ? 1 : 0, HOVER_STIFFNESS, HOVER_DAMPING, dt)
-      stepSpring(sb.active, isActive ? 1 : 0, HOVER_STIFFNESS * 1.5, HOVER_DAMPING * 1.2, dt)
-      // Sync into animState arrays for the draw() loop
+      stepSpring(
+        sb.active,
+        isActive ? 1 : 0,
+        HOVER_STIFFNESS * 1.5,
+        HOVER_DAMPING * 1.2,
+        dt
+      )
       animState.buttonHovers[i] = sb.hover.val
       animState.buttonActive[i] = sb.active.val
     })
   }
-  function draw() {
-    const { style, buttons: btnConfig } = config
+  function draw () {
+    const { style } = config
+    const contextBtns = getContextButtons()
     const dpr = window.devicePixelRatio || 1
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
     const baseBtnSize = style.iconSize + style.iconPadding * 2
     buttons = []
     let x = style.padding
     const y = style.padding
-    btnConfig.forEach((btn, i) => {
-      const hoverVal = animState.buttonHovers[i]
-      const activeVal = animState.buttonActive[i]
-      // Declare targetScale FIRST
+    contextBtns.forEach((btn, i) => {
+      const hoverVal = animState.buttonHovers[i] ?? 0
+      const activeVal = animState.buttonActive[i] ?? 0
       const targetScale =
         1 +
         hoverVal * (style.hoverScale - 1) -
         activeVal * (style.hoverScale - style.activeScale)
       const currentBtnSize = baseBtnSize * targetScale
       const offset = (baseBtnSize - currentBtnSize) / 2
-      // Hit-testing uses the base (un-scaled) box so hover doesn't jitter
+      // Hit-test box always uses base size so hover doesn't jitter
       buttons.push({ x, y, w: baseBtnSize, h: baseBtnSize, data: btn })
       const bx = x + offset
       const by = y + offset
       if (hoverVal > 0.001) {
         ctx.fillStyle = style.hoverColor
         ctx.globalAlpha = style.hoverOpacity * hoverVal
-        roundRect(ctx, bx, by, currentBtnSize, currentBtnSize, style.borderRadius)
+        roundRect(
+          ctx,
+          bx,
+          by,
+          currentBtnSize,
+          currentBtnSize,
+          style.borderRadius
+        )
         ctx.fill()
         ctx.globalAlpha = 1
       }
@@ -1243,34 +1597,89 @@ document.addEventListener('DOMContentLoaded', () => {
         const scaledIconSize = style.iconSize * targetScale
         const ix = x + (baseBtnSize - scaledIconSize) / 2
         const iy = y + (baseBtnSize - scaledIconSize) / 2 + lift
-        ctx.filter = hoverVal > 0.001 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
+        ctx.filter =
+          hoverVal > 0.001 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
         ctx.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
         ctx.filter = 'none'
       }
       x += baseBtnSize + style.buttonSpacing
     })
   }
+  // --- Icon Loading ---
+  function svgToDataUri (svgStr) {
+    return (
+      'data:image/svg+xml;charset=utf-8;base64,' +
+      window.btoa(unescape(encodeURIComponent(svgStr)))
+    )
+  }
+  function loadSingleIcon (btn) {
+    return new Promise(resolve => {
+      const img = new Image()
+      let src = btn.icon || ''
+      if (src.trim().startsWith('<svg')) {
+        try {
+          src = svgToDataUri(src)
+        } catch (e) {
+          console.error('Icon encoding failed', e)
+          return resolve(null)
+        }
+      }
+      img.onload = () => resolve({ id: btn.id, img })
+      img.onerror = () => {
+        console.warn(`Failed to load icon for ${btn.id}`)
+        resolve(null)
+      }
+      img.src = src
+    })
+  }
+  function loadIcons () {
+    loadedIcons = {}
+    iconsReady = false
+    const total = config.buttons.length
+    // Size springs to the max possible button count (all buttons)
+    // so we never have index gaps regardless of context
+    springs.buttons = config.buttons.map(() => ({
+      hover: { val: 0, vel: 0 },
+      active: { val: 0, vel: 0 }
+    }))
+    animState.buttonHovers = new Array(total).fill(0)
+    animState.buttonActive = new Array(total).fill(0)
+    if (total === 0) {
+      iconsReady = true
+      return
+    }
+    Promise.all(config.buttons.map(loadSingleIcon)).then(results => {
+      results.forEach(r => {
+        if (r) loadedIcons[r.id] = r.img
+      })
+      iconsReady = true
+      if (isVisible) requestAnimationFrame(draw)
+    })
+  }
   // --- Mouse Interaction ---
-  function handleMouseMove(e) {
+  function handleMouseMove (e) {
     if (!isVisible) return
     const rect = canvas.getBoundingClientRect()
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
-    let cursor = 'default'
     let hoveredIndex = -1
     buttons.forEach((btn, i) => {
-      if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
-        cursor = 'pointer'
+      if (
+        mx >= btn.x &&
+        mx <= btn.x + btn.w &&
+        my >= btn.y &&
+        my <= btn.y + btn.h
+      ) {
         hoveredIndex = i
       }
     })
     animState.hoveredButtonIndex = hoveredIndex
-    canvas.style.cursor = cursor
+    canvas.style.cursor = hoveredIndex !== -1 ? 'pointer' : 'default'
   }
-  function handleCanvasDown(e) {
+  function handleCanvasDown () {
     if (animState.hoveredButtonIndex !== -1) isMouseDown = true
   }
-  async function handleCanvasUp(e) {
+  async function handleCanvasUp () {
     isMouseDown = false
     if (animState.hoveredButtonIndex === -1) return
     const btn = buttons[animState.hoveredButtonIndex]
@@ -1281,10 +1690,11 @@ document.addEventListener('DOMContentLoaded', () => {
         ? url.replace('%s', encodeURIComponent(currentSelection))
         : url
       window.open(targetUrl, '_blank')
+    } else if (type === 'image-search') {
+      handleImageSearch(url)
     } else if (type === 'action') {
       if (action === 'copy') {
-        try { await navigator.clipboard.writeText(currentSelection) }
-        catch (err) { console.error('Copy failed:', err) }
+        await handleCopy()
       } else if (action === 'paste') {
         try {
           const text = await navigator.clipboard.readText()
@@ -1292,13 +1702,146 @@ document.addEventListener('DOMContentLoaded', () => {
             selectionRange.deleteContents()
             selectionRange.insertNode(document.createTextNode(text))
           }
-        } catch (err) { console.error(err) }
+        } catch (err) {
+          console.error('[Toast] Paste failed:', err)
+        }
+      } else if (action === 'markdown') {
+        await handleMarkdownCopy(btn.data)
       }
     }
     hideToast()
   }
+  // --- Action Handlers ---
+  function handleImageSearch (urlTemplate) {
+    if (!imageContext.isAccessible || !imageContext.resolvedUrl) {
+      // data: or blob: URI — can't be fetched by remote engines
+      console.warn(
+        '[Toast] Image search unavailable: image src is a data/blob URI and cannot be resolved by remote search engines.'
+      )
+      return
+    }
+    const targetUrl = urlTemplate.replace(
+      '%s',
+      encodeURIComponent(imageContext.resolvedUrl)
+    )
+    window.open(targetUrl, '_blank')
+  }
+  async function handleMarkdownCopy (btn) {
+    const source = btn.markdownSource || 'selection'
+    let markdown = ''
+    if (source === 'page') {
+      const clone = document.body.cloneNode(true)
+      // Strip noisy, non-content elements
+      const noisy = [
+        'script',
+        'style',
+        'noscript',
+        'iframe',
+        'nav',
+        'header',
+        'footer',
+        'aside',
+        '[aria-hidden="true"]'
+      ]
+      noisy.forEach(sel => {
+        clone.querySelectorAll(sel).forEach(el => el.remove())
+      })
+      // Prepend page title as an h1
+      const title = document.title.trim()
+      const body = turndownService.turndown(clone.innerHTML)
+      markdown = title ? `# ${title}\n\n${body}` : body
+    } else {
+      // Selection mode — preserve structure by working from the range's HTML
+      if (!selectionRange) return
+      const fragment = selectionRange.cloneContents()
+      const wrapper = document.createElement('div')
+      wrapper.appendChild(fragment)
+      markdown = turndownService.turndown(wrapper.innerHTML)
+    }
+    if (!markdown.trim()) return
+    try {
+      await navigator.clipboard.writeText(markdown)
+    } catch (err) {
+      console.error('[Toast] Markdown copy failed:', err)
+    }
+  }
+  async function handleCopy () {
+    if (currentContext === 'image') {
+      await copyImage()
+    } else {
+      try {
+        await navigator.clipboard.writeText(currentSelection)
+      } catch (err) {
+        console.error('[Toast] Copy text failed:', err)
+      }
+    }
+  }
+  async function copyImage () {
+    const src = imageContext.resolvedUrl || imageContext.src
+    if (!src) return
+    // data: URI — decode and write directly, no fetch needed
+    if (src.startsWith('data:image/png')) {
+      try {
+        const res = await fetch(src)
+        const blob = await res.blob()
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ])
+      } catch (err) {
+        console.error('[Toast] Copy image (data URI) failed:', err)
+      }
+      return
+    }
+    // Remote URL — fetch the image. Will fail for cross-origin images
+    // that don't set CORS headers, which is most of the web. We try anyway
+    // and fall back to copying the URL as plain text.
+    try {
+      const res = await fetch(src, { mode: 'cors' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      // Normalise to PNG since ClipboardItem only reliably accepts image/png
+      const pngBlob = await normaliseToPng(blob)
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': pngBlob })
+      ])
+    } catch {
+      // CORS or fetch failure — copy the URL instead as a graceful fallback
+      console.warn(
+        '[Toast] Could not fetch image for clipboard, copying URL instead.'
+      )
+      try {
+        await navigator.clipboard.writeText(src)
+      } catch (err) {
+        console.error('[Toast] Fallback URL copy failed:', err)
+      }
+    }
+  }
+  // Draws any image blob onto an offscreen canvas and exports as PNG
+  function normaliseToPng (blob) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      img.onload = () => {
+        const offscreen = document.createElement('canvas')
+        offscreen.width = img.naturalWidth
+        offscreen.height = img.naturalHeight
+        const octx = offscreen.getContext('2d')
+        octx.drawImage(img, 0, 0)
+        URL.revokeObjectURL(url)
+        offscreen.toBlob(pngBlob => {
+          if (pngBlob) resolve(pngBlob)
+          else reject(new Error('toBlob failed'))
+        }, 'image/png')
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        reject(new Error('Image load failed'))
+      }
+      img.src = url
+    })
+  }
   // --- Drawing Utilities ---
-  function roundRect(ctx, x, y, w, h, r) {
+  function roundRect (ctx, x, y, w, h, r) {
     if (w < 2 * r) r = w / 2
     if (h < 2 * r) r = h / 2
     ctx.beginPath()

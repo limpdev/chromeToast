@@ -33,8 +33,8 @@ The content is organized as follows:
 <notes>
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
-- Only files matching these patterns are included: **/*.js, **/*.html, **/*.json
-- Files matching these patterns are excluded: node_modules, **/node_modules, **/.venv/**, **/venv/**, **/yarn.lock, **/*.md, node_modules, docs, dist
+- Only files matching these patterns are included: **/*.json, **/*.js, **/*.css, **/*.html
+- Files matching these patterns are excluded: node_modules, **/node_modules, **/.venv/**, **/venv/**, **/yarn.lock, **/*.md
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
 - Empty lines have been removed from all files
@@ -46,6 +46,7 @@ The content is organized as follows:
 
 <directory_structure>
 assets/
+docs/
 build.js
 content.js
 manifest.json
@@ -292,25 +293,6 @@ if (isDev) {
   runDev().catch(err => { console.error(err); process.exit(1) })
 } else {
   runBuild().catch(err => { console.error(err); process.exit(1) })
-}
-</file>
-
-<file path="package.json">
-{
-  "name": "toast-extension",
-  "version": "2.3.0",
-  "description": "Customizable floating action menu for text selections.",
-  "scripts": {
-    "build": "node build.js",
-    "dev": "node build.js --dev",
-    "sum": "repomix --include **/*.js,**/*.html,**/*.json --ignore node_modules,docs,dist --output docs/toast.xml"
-  },
-  "dependencies": {
-    "esbuild": "^0.20.0"
-  },
-  "devDependencies": {
-    "archiver": "^7.0.0"
-  }
 }
 </file>
 
@@ -634,35 +616,22 @@ if (isDev) {
 </html>
 </file>
 
-<file path="manifest.json">
+<file path="package.json">
 {
-  "manifest_version": 3,
-  "name": "Toast - Floating Selection Menu",
-  "version": "2.3.0",
-  "description": "A customizable floating action menu that appears when you select text.",
-  "permissions": ["storage", "clipboardWrite"],
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_end"
-    }
-  ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_title": "Toast Settings"
+  "name": "toast-extension",
+  "version": "3.0.0",
+  "description": "Customizable floating action menu for text selections.",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "node build.js --dev",
+    "sum": "repomix --include **/*.js,**/*.html,**/*.json --ignore node_modules,docs,dist --output docs/toast.xml"
   },
-  "icons": {
-    "16": "assets/icon16.png",
-    "48": "assets/icon48.png",
-    "128": "assets/icon128.png"
+  "dependencies": {
+    "esbuild": "^0.20.0"
   },
-  "web_accessible_resources": [
-    {
-      "resources": ["assets/*.png"],
-      "matches": ["chrome-extension://*/*"]
-    }
-  ]
+  "devDependencies": {
+    "archiver": "^7.0.0"
+  }
 }
 </file>
 
@@ -873,6 +842,38 @@ document.addEventListener('DOMContentLoaded', () => {
     )
   })
 })
+</file>
+
+<file path="manifest.json">
+{
+  "manifest_version": 3,
+  "name": "Toast - Floating Selection Menu",
+  "version": "3.0.0",
+  "description": "A customizable floating action menu that appears when you select text.",
+  "permissions": ["storage", "clipboardWrite"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Toast Settings"
+  },
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*.png"],
+      "matches": ["chrome-extension://*/*"]
+    }
+  ]
+}
 </file>
 
 <file path="content.js">
@@ -1117,10 +1118,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   // --- Toast Lifecycle ---
   function showToast(rect) {
-    const { padding, buttonSize, buttonSpacing } = config.style
+    const { style } = config
+    const baseBtnSize = style.iconSize + style.iconPadding * 2
     const count = config.buttons.length
-    const totalWidth = padding * 2 + buttonSize * count + buttonSpacing * (count - 1)
-    const totalHeight = padding * 2 + buttonSize
+    const totalWidth =
+      style.padding * 2 + baseBtnSize * count + style.buttonSpacing * (count - 1)
+    const totalHeight = style.padding * 2 + baseBtnSize
     const dpr = window.devicePixelRatio || 1
     canvas.style.width = totalWidth + 'px'
     canvas.style.height = totalHeight + 'px'
@@ -1206,22 +1209,25 @@ document.addEventListener('DOMContentLoaded', () => {
     })
   }
   function draw() {
-    const { style, buttons: btnConfig } = config  // must be first
+    const { style, buttons: btnConfig } = config
     const dpr = window.devicePixelRatio || 1
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
+    const baseBtnSize = style.iconSize + style.iconPadding * 2
     buttons = []
     let x = style.padding
     const y = style.padding
     btnConfig.forEach((btn, i) => {
       const hoverVal = animState.buttonHovers[i]
       const activeVal = animState.buttonActive[i]
-      const currentBtnSize = (style.iconSize + style.iconPadding * 2) * targetScale
+      // Declare targetScale FIRST
       const targetScale =
         1 +
         hoverVal * (style.hoverScale - 1) -
         activeVal * (style.hoverScale - style.activeScale)
-      // const offset = (style.buttonSize - currentBtnSize) / 2
-      buttons.push({ x, y, w: style.buttonSize, h: style.buttonSize, data: btn })
+      const currentBtnSize = baseBtnSize * targetScale
+      const offset = (baseBtnSize - currentBtnSize) / 2
+      // Hit-testing uses the base (un-scaled) box so hover doesn't jitter
+      buttons.push({ x, y, w: baseBtnSize, h: baseBtnSize, data: btn })
       const bx = x + offset
       const by = y + offset
       if (hoverVal > 0.001) {
@@ -1235,13 +1241,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (iconImg && iconsReady) {
         const lift = hoverVal * -1 * (style.iconLift || 0)
         const scaledIconSize = style.iconSize * targetScale
-        const ix = x + (style.buttonSize - scaledIconSize) / 2
-        const iy = y + (style.buttonSize - scaledIconSize) / 2 + lift
+        const ix = x + (baseBtnSize - scaledIconSize) / 2
+        const iy = y + (baseBtnSize - scaledIconSize) / 2 + lift
         ctx.filter = hoverVal > 0.001 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
         ctx.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
         ctx.filter = 'none'
       }
-      x += style.buttonSize + style.buttonSpacing
+      x += baseBtnSize + style.buttonSpacing
     })
   }
   // --- Mouse Interaction ---

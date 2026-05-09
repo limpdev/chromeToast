@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Toast Settings</title>
+  <title>Toast Preferences</title>
   <style>
     :root {
       --bg-color: #0f172a;
@@ -87,6 +87,7 @@
       cursor: pointer;
       background: none;
       border-radius: 4px;
+      appearance: none;
       -webkit-appearance: none;
     }
 
@@ -94,6 +95,7 @@
       width: 110px;
       height: 4px;
       border-radius: 2px;
+      appearance: none;
       -webkit-appearance: none;
       background: var(--border);
     }
@@ -234,16 +236,73 @@
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
+
+    .context-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .checkbox-group {
+      display: flex;
+      gap: 12px;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+
+    .checkbox-label:hover {
+      color: var(--text);
+    }
+
+    input[type="checkbox"] {
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .preset-picker {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-top: 4px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+
+    .preset-row {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .preset-row:hover:not(:disabled) {
+      background: var(--border);
+    }
+
+    .preset-row--added {
+      color: var(--text-muted);
+      cursor: default;
+    }
   </style>
 </head>
 
 <body>
-  <h2>
-    <svg fill="currentColor" viewBox="0 0 24 24">
-      <path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2m0 16H5V5h14v14z" />
-    </svg>
-    Toast Configuration
-  </h2>
+  <h4 style="letter-spacing: 0.05em;justify-self: center;">
+    Where The <s style="font-style: italic;opacity: .3;"> Sausage </s><strong><u> Toast </u></strong> Is Made
+  </h4>
 
   <!-- Visual Style -->
   <div class="section">
@@ -343,7 +402,12 @@
   <div class="section">
     <span class="section-title">Actions & Links</span>
     <div id="buttonList"></div>
-    <button id="addBtn" class="main-btn btn-secondary">+ Add Action</button>
+    <div class="grid-2">
+      <button id="addBtn" class="main-btn btn-secondary">+ Add Action</button>
+      <button id="addImageSearchBtn" class="main-btn btn-secondary">
+        + Image Search
+      </button>
+    </div>
   </div>
 
   <button id="save" class="main-btn btn-primary">Save Changes</button>

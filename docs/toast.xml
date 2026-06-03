@@ -1,5 +1,4 @@
-This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
-The content has been processed where empty lines have been removed.
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
 
 <file_summary>
 This section contains a summary of this file.
@@ -34,19 +33,14 @@ The content is organized as follows:
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
 - Only files matching these patterns are included: **/*.json, **/*.js, **/*.css, **/*.html
-- Files matching these patterns are excluded: node_modules, **/node_modules, **/.venv/**, **/venv/**, **/yarn.lock, **/*.md
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
-- Empty lines have been removed from all files
-- Long base64 data strings (e.g., data:image/png;base64,...) have been truncated to reduce token count
 - Files are sorted by Git change count (files with more changes are at the bottom)
 </notes>
 
 </file_summary>
 
 <directory_structure>
-assets/
-docs/
 build.js
 content.js
 manifest.json
@@ -61,16 +55,20 @@ This section contains the contents of the repository's files.
 <file path="build.js">
 #!/usr/bin/env node
 'use strict'
+
 const esbuild = require('esbuild')
 const fs = require('fs')
 const path = require('path')
 const archiver = require('archiver')
 const http = require('http')
+
 const isDev = process.argv.includes('--watch') || process.argv.includes('--dev')
 const distDir = 'dist'
 const iconsDir = path.join(distDir, 'assets')
 const zipName = 'extension.zip'
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
 function copyAssets() {
   if (!fs.existsSync(iconsDir)) fs.mkdirSync(iconsDir, { recursive: true })
     ;['icon16.png', 'icon48.png', 'icon128.png'].forEach(icon => {
@@ -84,9 +82,11 @@ function copyAssets() {
       }
     })
 }
+
 function copyManifest() {
   fs.copyFileSync('manifest.json', path.join(distDir, 'manifest.json'))
 }
+
 function minifyAndCopyHtml() {
   const src = fs.readFileSync('popup.html', 'utf8')
   const out = src
@@ -95,11 +95,13 @@ function minifyAndCopyHtml() {
     .replace(/<!--.*?-->/gs, '')
   fs.writeFileSync(path.join(distDir, 'popup.html'), out)
 }
+
 function prepareDist() {
   if (fs.existsSync(distDir)) fs.rmSync(distDir, { recursive: true })
   fs.mkdirSync(distDir)
   fs.mkdirSync(iconsDir)
 }
+
 // ─── Dev Mode ───────────────────────────────────────────────────────────────
 //
 // How it works:
@@ -114,8 +116,10 @@ function prepareDist() {
 //   - Load dist/ as an unpacked extension in chrome://extensions
 //   - Enable "Developer mode"
 //   - No extra Chrome extension needed — the shim is injected automatically.
+
 const SSE_PORT = 8099
 let sseClients = []
+
 function startSseServer() {
   const server = http.createServer((req, res) => {
     if (req.url !== '/events') {
@@ -139,10 +143,12 @@ function startSseServer() {
     console.log(`[dev] SSE server listening on http://localhost:${SSE_PORT}/events`)
   })
 }
+
 function pushReload(reason) {
   console.log(`[dev] Reload triggered: ${reason}`)
   sseClients.forEach(res => res.write('data: reload\n\n'))
 }
+
 // Minimal reload shim injected into dist/ only during dev builds.
 // It reconnects automatically if the dev server restarts.
 const reloadShim = `
@@ -161,13 +167,16 @@ const reloadShim = `
   connect()
 })()
 `.trim()
+
 function writeReloadShim() {
   fs.writeFileSync(path.join(distDir, 'reload-shim.js'), reloadShim)
 }
+
 // Patch manifest to include the shim as a content_script.
 // We write a modified copy — the source manifest.json is never touched.
 function writeDevManifest() {
   const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'))
+
   // Add reload-shim.js to the existing content_scripts entry
   if (manifest.content_scripts && manifest.content_scripts.length > 0) {
     const entry = manifest.content_scripts[0]
@@ -175,17 +184,20 @@ function writeDevManifest() {
       entry.js.push('reload-shim.js')
     }
   }
+
   // content_scripts can't reach SSE directly without host_permissions in MV3
   if (!manifest.host_permissions) manifest.host_permissions = []
   const shimOrigin = `http://localhost:${SSE_PORT}/`
   if (!manifest.host_permissions.includes(shimOrigin)) {
     manifest.host_permissions.push(shimOrigin)
   }
+
   fs.writeFileSync(
     path.join(distDir, 'manifest.json'),
     JSON.stringify(manifest, null, 2)
   )
 }
+
 function watchStaticFiles() {
   // Watch manifest.json
   fs.watch('manifest.json', () => {
@@ -193,12 +205,14 @@ function watchStaticFiles() {
     writeDevManifest()
     pushReload('manifest.json')
   })
+
   // Watch popup.html
   fs.watch('popup.html', () => {
     console.log('[dev] popup.html changed')
     minifyAndCopyHtml()
     pushReload('popup.html')
   })
+
   // Watch assets/
   if (fs.existsSync('assets')) {
     fs.watch('assets', () => {
@@ -207,6 +221,7 @@ function watchStaticFiles() {
     })
   }
 }
+
 async function runDev() {
   console.log('[dev] Starting dev build...')
   prepareDist()
@@ -214,7 +229,9 @@ async function runDev() {
   minifyAndCopyHtml()
   writeReloadShim()
   writeDevManifest()
+
   startSseServer()
+
   const onRebuild = (label) => ({
     name: 'notify-reload',
     setup(build) {
@@ -227,6 +244,7 @@ async function runDev() {
       })
     }
   })
+
   // Content script (bundled IIFE)
   const contentCtx = await esbuild.context({
     entryPoints: ['content.js'],
@@ -238,6 +256,7 @@ async function runDev() {
     format: 'iife',
     plugins: [onRebuild('content.js')]
   })
+
   // Popup script
   const popupCtx = await esbuild.context({
     entryPoints: ['popup.js'],
@@ -248,12 +267,16 @@ async function runDev() {
     target: 'chrome100',
     plugins: [onRebuild('popup.js')]
   })
+
   await Promise.all([contentCtx.watch(), popupCtx.watch()])
   watchStaticFiles()
+
   console.log('[dev] Watching for changes. Load dist/ as an unpacked extension.')
   console.log('[dev] Press Ctrl+C to stop.\n')
 }
+
 // ─── Production Build ────────────────────────────────────────────────────────
+
 async function runBuild() {
   console.log('Starting build...')
   if (fs.existsSync(zipName)) fs.rmSync(zipName)
@@ -261,6 +284,7 @@ async function runBuild() {
   copyAssets()
   minifyAndCopyHtml()
   copyManifest()
+
   esbuild.buildSync({
     entryPoints: ['content.js'],
     bundle: true,
@@ -269,13 +293,16 @@ async function runBuild() {
     target: 'chrome100',
     format: 'iife'
   })
+
   esbuild.buildSync({
     entryPoints: ['popup.js'],
     minify: true,
     outfile: path.join(distDir, 'popup.js'),
     target: 'chrome100'
   })
+
   console.log('Compilation complete.')
+
   console.log('Packaging for Web Store...')
   const output = fs.createWriteStream(zipName)
   const archive = archiver('zip', { zlib: { level: 9 } })
@@ -288,7 +315,9 @@ async function runBuild() {
   archive.directory(distDir, false)
   archive.finalize()
 }
+
 // ─── Entry ───────────────────────────────────────────────────────────────────
+
 if (isDev) {
   runDev().catch(err => { console.error(err); process.exit(1) })
 } else {
@@ -296,30 +325,10 @@ if (isDev) {
 }
 </file>
 
-<file path="package.json">
-{
-  "name": "toast-extension",
-  "version": "3.0.0",
-  "description": "Customizable floating action menu for text selections.",
-  "scripts": {
-    "build": "node build.js",
-    "dev": "node build.js --dev",
-    "sum": "repomix --include **/*.js,**/*.html,**/*.json --ignore node_modules,docs,dist --output docs/toast.xml"
-  },
-  "dependencies": {
-    "esbuild": "^0.20.0",
-    "turndown": "^7.2.0",
-    "turndown-plugin-gfm": "^1.0.2"
-  },
-  "devDependencies": {
-    "archiver": "^7.0.0"
-  }
-}
-</file>
-
 <file path="popup.html">
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -335,6 +344,7 @@ if (isDev) {
       --border: #334155;
       --danger: #ef4444;
     }
+
     body {
       width: 360px;
       margin: 0;
@@ -343,6 +353,7 @@ if (isDev) {
       background: var(--bg-color);
       color: var(--text);
     }
+
     h2 {
       margin: 0 0 16px 0;
       font-size: 18px;
@@ -351,11 +362,13 @@ if (isDev) {
       align-items: center;
       gap: 8px;
     }
+
     h2 svg {
       width: 20px;
       height: 20px;
       color: var(--accent);
     }
+
     .section {
       background: var(--card-bg);
       border: 1px solid var(--border);
@@ -363,6 +376,7 @@ if (isDev) {
       padding: 12px;
       margin-bottom: 16px;
     }
+
     .section-title {
       font-size: 11px;
       text-transform: uppercase;
@@ -374,6 +388,7 @@ if (isDev) {
       border-bottom: 1px solid var(--border);
       padding-bottom: 4px;
     }
+
     .control-row {
       display: flex;
       align-items: center;
@@ -381,15 +396,18 @@ if (isDev) {
       margin-bottom: 12px;
       font-size: 13px;
     }
+
     .control-row:last-child {
       margin-bottom: 0;
     }
+
     .control-col {
       display: flex;
       flex-direction: column;
       gap: 4px;
       font-size: 13px;
     }
+
     input[type="color"] {
       width: 28px;
       height: 28px;
@@ -400,6 +418,7 @@ if (isDev) {
       appearance: none;
       -webkit-appearance: none;
     }
+
     input[type="range"] {
       width: 110px;
       height: 4px;
@@ -408,6 +427,7 @@ if (isDev) {
       -webkit-appearance: none;
       background: var(--border);
     }
+
     input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
       width: 12px;
@@ -417,11 +437,13 @@ if (isDev) {
       cursor: pointer;
       margin-top: -4px;
     }
+
     input[type="range"]::-webkit-slider-runnable-track {
       height: 4px;
       background: var(--border);
       border-radius: 2px;
     }
+
     .value-display {
       font-family: monospace;
       font-size: 11px;
@@ -429,6 +451,7 @@ if (isDev) {
       width: 34px;
       text-align: right;
     }
+
     /* Button List Styling */
     .btn-item {
       background: rgba(0, 0, 0, 0.2);
@@ -438,9 +461,11 @@ if (isDev) {
       margin-bottom: 8px;
       transition: border-color 0.2s;
     }
+
     .btn-item:hover {
       border-color: var(--accent);
     }
+
     .btn-header {
       display: flex;
       justify-content: space-between;
@@ -449,14 +474,17 @@ if (isDev) {
       font-size: 12px;
       font-weight: 600;
     }
+
     .btn-remove {
       color: var(--text-muted);
       cursor: pointer;
       padding: 2px;
     }
+
     .btn-remove:hover {
       color: var(--danger);
     }
+
     input[type="text"],
     textarea,
     select {
@@ -470,17 +498,20 @@ if (isDev) {
       font-size: 12px;
       margin-bottom: 8px;
     }
+
     input[type="text"]:focus,
     textarea:focus,
     select:focus {
       outline: none;
       border-color: var(--accent);
     }
+
     textarea {
       height: 50px;
       font-family: monospace;
       resize: vertical;
     }
+
     .main-btn {
       width: 100%;
       padding: 10px;
@@ -491,21 +522,26 @@ if (isDev) {
       font-size: 13px;
       transition: background 0.2s;
     }
+
     .btn-primary {
       background: var(--accent);
       color: white;
     }
+
     .btn-primary:hover {
       background: var(--accent-hover);
     }
+
     .btn-secondary {
       background: var(--border);
       color: var(--text);
       margin-top: 8px;
     }
+
     .btn-secondary:hover {
       background: #475569;
     }
+
     #status {
       text-align: center;
       font-size: 12px;
@@ -515,27 +551,32 @@ if (isDev) {
       opacity: 0;
       transition: opacity 0.3s;
     }
+
     .helper-text {
       font-size: 10px;
       color: var(--text-muted);
       margin-bottom: 4px;
       display: block;
     }
+
     .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
+
     .context-row {
       display: flex;
       align-items: center;
       gap: 8px;
       margin-bottom: 8px;
     }
+
     .checkbox-group {
       display: flex;
       gap: 12px;
     }
+
     .checkbox-label {
       display: flex;
       align-items: center;
@@ -544,13 +585,16 @@ if (isDev) {
       cursor: pointer;
       color: var(--text-muted);
     }
+
     .checkbox-label:hover {
       color: var(--text);
     }
+
     input[type="checkbox"] {
       accent-color: var(--accent);
       cursor: pointer;
     }
+
     .preset-picker {
       background: var(--card-bg);
       border: 1px solid var(--border);
@@ -559,6 +603,7 @@ if (isDev) {
       margin-bottom: 8px;
       overflow: hidden;
     }
+
     .preset-row {
       display: block;
       width: 100%;
@@ -570,19 +615,23 @@ if (isDev) {
       text-align: left;
       cursor: pointer;
     }
+
     .preset-row:hover:not(:disabled) {
       background: var(--border);
     }
+
     .preset-row--added {
       color: var(--text-muted);
       cursor: default;
     }
   </style>
 </head>
+
 <body>
   <h4 style="letter-spacing: 0.05em;justify-self: center;">
     Where The <s style="font-style: italic;opacity: .3;"> Sausage </s><strong><u> Toast </u></strong> Is Made
   </h4>
+
   <!-- Visual Style -->
   <div class="section">
     <span class="section-title">Visual Style</span>
@@ -609,6 +658,7 @@ if (isDev) {
       </div>
     </div>
   </div>
+
   <!-- Layout & Spacing -->
   <div class="section">
     <span class="section-title">Layout & Spacing</span>
@@ -641,6 +691,7 @@ if (isDev) {
       </div>
     </div>
   </div>
+
   <!-- Animation & Interaction -->
   <div class="section">
     <span class="section-title">Animation & Interaction</span>
@@ -674,6 +725,7 @@ if (isDev) {
       </div>
     </div>
   </div>
+
   <!-- Actions -->
   <div class="section">
     <span class="section-title">Actions & Links</span>
@@ -685,11 +737,34 @@ if (isDev) {
       </button>
     </div>
   </div>
+
   <button id="save" class="main-btn btn-primary">Save Changes</button>
   <div id="status">Settings Saved!</div>
   <script src="popup.js"></script>
 </body>
+
 </html>
+</file>
+
+<file path="package.json">
+{
+  "name": "toast-extension",
+  "version": "3.0.0",
+  "description": "Customizable floating action menu for text selections.",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "node build.js --dev",
+    "sum": "repomix --include **/*.js,**/*.html,**/*.json --ignore node_modules,docs,dist --output docs/toast.xml"
+  },
+  "dependencies": {
+    "esbuild": "^0.20.0",
+    "turndown": "^7.2.0",
+    "turndown-plugin-gfm": "^1.0.2"
+  },
+  "devDependencies": {
+    "archiver": "^7.0.0"
+  }
+}
 </file>
 
 <file path="popup.js">
@@ -932,6 +1007,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const label = document.createElement('span')
     label.className = 'helper-text'
     label.textContent = 'Markdown source:'
+
     const sel = document.createElement('select')
     sel.className = 'config-input'
     sel.dataset.field = 'markdownSource'
@@ -946,6 +1022,7 @@ document.addEventListener('DOMContentLoaded', () => {
       opt.selected = (btn.markdownSource || 'selection') === value
       sel.appendChild(opt)
     })
+
     const wrapper = document.createElement('div')
     wrapper.appendChild(label)
     wrapper.appendChild(sel)
@@ -1102,13 +1179,20 @@ document.addEventListener('DOMContentLoaded', () => {
 {
   "manifest_version": 3,
   "name": "Toast - Floating Selection Menu",
-  "version": "3.1.0",
+  "version": "3.5.0",
   "description": "A customizable floating action menu that appears when you select text.",
-  "permissions": ["storage", "clipboardWrite"],
+  "permissions": [
+    "storage",
+    "clipboardWrite"
+  ],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_end"
     }
   ],
@@ -1123,8 +1207,12 @@ document.addEventListener('DOMContentLoaded', () => {
   },
   "web_accessible_resources": [
     {
-      "resources": ["assets/*.png"],
-      "matches": ["chrome-extension://*/*"]
+      "resources": [
+        "assets/*.png"
+      ],
+      "matches": [
+        "chrome-extension://*/*"
+      ]
     }
   ]
 }
@@ -1236,6 +1324,7 @@ import { gfm } from 'turndown-plugin-gfm'
     linkStyle: 'inlined'
   })
   turndownService.use(gfm)
+
   // Strip elements that are invisible or purely presentational
   turndownService.addRule('removeHidden', {
     filter: el =>
@@ -1243,11 +1332,13 @@ import { gfm } from 'turndown-plugin-gfm'
       (el.style.display === 'none' || el.style.visibility === 'hidden'),
     replacement: () => ''
   })
+
   // Preserve <br> as a markdown line break
   turndownService.addRule('lineBreak', {
     filter: 'br',
     replacement: () => '  \n'
   })
+
   let config = JSON.parse(JSON.stringify(defaultConfig))
   // --- Helpers ---
   const hexToRgbCache = new Map()
@@ -1345,11 +1436,14 @@ import { gfm } from 'turndown-plugin-gfm'
     document.addEventListener('mouseup', handleMouseUp)
     document.addEventListener('mousedown', handleMouseDown)
     document.addEventListener('scroll', handleScroll, { passive: true })
+
     // Image hover tracking
     document.addEventListener('mouseover', handleImageMouseOver)
     document.addEventListener('mouseout', handleImageMouseOut)
+
     // Ctrl+hover trigger
     document.addEventListener('keydown', handleKeyDown)
+
     // Canvas interactions
     canvas.addEventListener('mousemove', handleMouseMove)
     canvas.addEventListener('mousedown', handleCanvasDown)
@@ -1360,12 +1454,14 @@ import { gfm } from 'turndown-plugin-gfm'
     })
   }
   // Replace handleImageClick with these three functions:
+
   function handleImageMouseOver (e) {
     const target = e.target
     if (!(target instanceof HTMLImageElement)) return
     if (toastEl && toastEl.contains(target)) return
     hoveredImage = target
   }
+
   function handleImageMouseOut (e) {
     const target = e.target
     if (!(target instanceof HTMLImageElement)) return
@@ -1374,10 +1470,12 @@ import { gfm } from 'turndown-plugin-gfm'
     if (toastEl && toastEl.contains(e.relatedTarget)) return
     if (target === hoveredImage) hoveredImage = null
   }
+
   function handleKeyDown (e) {
     // Only Control, not Ctrl+C / Ctrl+V / etc.
     if (e.key !== 'Control' || e.ctrlKey === false) return
     if (!hoveredImage) return
+
     const resolved = resolveImageUrl(hoveredImage.src)
     imageContext = {
       src: hoveredImage.src,
@@ -1387,6 +1485,7 @@ import { gfm } from 'turndown-plugin-gfm'
     currentContext = 'image'
     window.getSelection()?.removeAllRanges()
     currentSelection = ''
+
     const rect = hoveredImage.getBoundingClientRect()
     showToast(rect)
   }
@@ -1729,8 +1828,10 @@ import { gfm } from 'turndown-plugin-gfm'
   async function handleMarkdownCopy (btn) {
     const source = btn.markdownSource || 'selection'
     let markdown = ''
+
     if (source === 'page') {
       const clone = document.body.cloneNode(true)
+
       // Strip noisy, non-content elements
       const noisy = [
         'script',
@@ -1746,6 +1847,7 @@ import { gfm } from 'turndown-plugin-gfm'
       noisy.forEach(sel => {
         clone.querySelectorAll(sel).forEach(el => el.remove())
       })
+
       // Prepend page title as an h1
       const title = document.title.trim()
       const body = turndownService.turndown(clone.innerHTML)
@@ -1758,7 +1860,9 @@ import { gfm } from 'turndown-plugin-gfm'
       wrapper.appendChild(fragment)
       markdown = turndownService.turndown(wrapper.innerHTML)
     }
+
     if (!markdown.trim()) return
+
     try {
       await navigator.clipboard.writeText(markdown)
     } catch (err) {

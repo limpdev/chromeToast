@@ -48,19 +48,6 @@ function prepareDist() {
 }
 
 // ─── Dev Mode ───────────────────────────────────────────────────────────────
-//
-// How it works:
-//   1. esbuild runs in watch mode — rebuilds content.js and popup.js on save.
-//   2. A tiny SSE server runs on localhost:8099. The dist/reload-shim.js
-//      script (auto-injected during dev) connects to it and calls
-//      chrome.runtime.reload() whenever the server sends a "reload" event.
-//   3. A manifest.json watcher triggers a full manifest re-copy + SSE push.
-//   4. popup.html is watched separately since esbuild doesn't handle HTML.
-//
-// Setup (one-time):
-//   - Load dist/ as an unpacked extension in chrome://extensions
-//   - Enable "Developer mode"
-//   - No extra Chrome extension needed — the shim is injected automatically.
 
 const SSE_PORT = 8099
 let sseClients = []
@@ -94,8 +81,6 @@ function pushReload(reason) {
   sseClients.forEach(res => res.write('data: reload\n\n'))
 }
 
-// Minimal reload shim injected into dist/ only during dev builds.
-// It reconnects automatically if the dev server restarts.
 const reloadShim = `
 ;(function devReloadShim() {
   const url = 'http://localhost:${SSE_PORT}/events'
@@ -117,12 +102,9 @@ function writeReloadShim() {
   fs.writeFileSync(path.join(distDir, 'reload-shim.js'), reloadShim)
 }
 
-// Patch manifest to include the shim as a content_script.
-// We write a modified copy — the source manifest.json is never touched.
 function writeDevManifest() {
   const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'))
 
-  // Add reload-shim.js to the existing content_scripts entry
   if (manifest.content_scripts && manifest.content_scripts.length > 0) {
     const entry = manifest.content_scripts[0]
     if (!entry.js.includes('reload-shim.js')) {
@@ -130,7 +112,6 @@ function writeDevManifest() {
     }
   }
 
-  // content_scripts can't reach SSE directly without host_permissions in MV3
   if (!manifest.host_permissions) manifest.host_permissions = []
   const shimOrigin = `http://localhost:${SSE_PORT}/`
   if (!manifest.host_permissions.includes(shimOrigin)) {
@@ -144,21 +125,18 @@ function writeDevManifest() {
 }
 
 function watchStaticFiles() {
-  // Watch manifest.json
   fs.watch('manifest.json', () => {
     console.log('[dev] manifest.json changed')
     writeDevManifest()
     pushReload('manifest.json')
   })
 
-  // Watch popup.html
   fs.watch('popup.html', () => {
     console.log('[dev] popup.html changed')
     minifyAndCopyHtml()
     pushReload('popup.html')
   })
 
-  // Watch assets/
   if (fs.existsSync('assets')) {
     fs.watch('assets', () => {
       copyAssets()
@@ -190,11 +168,10 @@ async function runDev() {
     }
   })
 
-  // Content script (bundled IIFE)
   const contentCtx = await esbuild.context({
     entryPoints: ['content.js'],
     bundle: true,
-    minify: false, // readable during dev
+    minify: false,
     sourcemap: 'inline',
     outfile: path.join(distDir, 'content.js'),
     target: 'chrome100',
@@ -202,7 +179,6 @@ async function runDev() {
     plugins: [onRebuild('content.js')]
   })
 
-  // Popup script
   const popupCtx = await esbuild.context({
     entryPoints: ['popup.js'],
     bundle: false,
@@ -213,7 +189,18 @@ async function runDev() {
     plugins: [onRebuild('popup.js')]
   })
 
-  await Promise.all([contentCtx.watch(), popupCtx.watch()])
+  const bgCtx = await esbuild.context({
+    entryPoints: ['background.js'],
+    bundle: true,
+    minify: false,
+    sourcemap: 'inline',
+    outfile: path.join(distDir, 'background.js'),
+    target: 'chrome100',
+    format: 'esm',
+    plugins: [onRebuild('background.js')]
+  })
+
+  await Promise.all([contentCtx.watch(), popupCtx.watch(), bgCtx.watch()])
   watchStaticFiles()
 
   console.log('[dev] Watching for changes. Load dist/ as an unpacked extension.')
@@ -244,6 +231,15 @@ async function runBuild() {
     minify: true,
     outfile: path.join(distDir, 'popup.js'),
     target: 'chrome100'
+  })
+
+  esbuild.buildSync({
+    entryPoints: ['background.js'],
+    bundle: true,
+    minify: true,
+    outfile: path.join(distDir, 'background.js'),
+    target: 'chrome100',
+    format: 'esm'
   })
 
   console.log('Compilation complete.')

@@ -1,3 +1,92 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: background.js, content.js
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+background.js
+content.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="background.js">
+import TurndownService from 'turndown'
+import { gfm } from 'turndown-plugin-gfm'
+
+const turndownService = new TurndownService({
+    headingStyle: 'atx',
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    fence: '```',
+    hr: '---',
+    linkStyle: 'inlined'
+})
+turndownService.use(gfm)
+turndownService.addRule('removeHidden', {
+    filter: el => el.style && (el.style.display === 'none' || el.style.visibility === 'hidden'),
+    replacement: () => ''
+})
+turndownService.addRule('lineBreak', {
+    filter: 'br',
+    replacement: () => '  \n'
+})
+
+chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+    if (req.type === 'MARKDOWN') {
+        sendResponse({ markdown: turndownService.turndown(req.html) })
+    }
+    else if (req.type === 'WEBHOOK') {
+        fetch(req.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selection: req.text, url: sender.tab.url })
+        }).catch(err => console.error('Webhook fail:', err))
+        sendResponse({ success: true })
+    }
+    return true // Async response
+})
+</file>
+
+<file path="content.js">
 // content.js - Toast Selection Popup (Hybrid DOM + Canvas)
 ; (function () {
   'use strict'
@@ -229,7 +318,6 @@
     toastEl.addEventListener('mouseleave', () => {
       animState.hoveredButtonIndex = -1
       isMouseDown = false
-      wake()
     })
   }
   // Replace handleImageClick with these three functions:
@@ -440,21 +528,39 @@
     updateState(dt)
     draw()
 
-    // Must check BOTH velocity AND distance to target so springs don't sleep mid-bounce
-    const opacityTarget = isVisible ? 1 : 0
-    const scaleTarget = isVisible ? 1 : 0.9
-
-    const opacityMoving = Math.abs(springs.opacity.vel) > 0.01 || Math.abs(springs.opacity.val - opacityTarget) > 0.01
-    const scaleMoving = Math.abs(springs.scale.vel) > 0.01 || Math.abs(springs.scale.val - scaleTarget) > 0.01
-
+    const opacityMoving = Math.abs(springs.opacity.vel) > 0.001 || Math.abs(springs.opacity.val - (isVisible ? 1 : 0)) > 0.001
+    const scaleMoving = Math.abs(springs.scale.vel) > 0.001 || Math.abs(springs.scale.val - (isVisible ? 1 : 0.9)) > 0.001
     const buttonsMoving = springs.buttons.some((b, i) => {
       const hoverTarget = animState.hoveredButtonIndex === i ? 1 : 0
       const activeTarget = (animState.hoveredButtonIndex === i && isMouseDown) ? 1 : 0
-      return Math.abs(b.hover.vel) > 0.01 || Math.abs(b.hover.val - hoverTarget) > 0.01 ||
-        Math.abs(b.active.vel) > 0.01 || Math.abs(b.active.val - activeTarget) > 0.01
+      return Math.abs(b.hover.vel) > 0.001 || Math.abs(b.hover.val - hoverTarget) > 0.001 ||
+        Math.abs(b.active.vel) > 0.001 || Math.abs(b.active.val - activeTarget) > 0.001
     })
 
     if (opacityMoving || scaleMoving || buttonsMoving) {
+      animationId = requestAnimationFrame(loop)
+    } else {
+      isAwake = false
+      animationId = null
+      if (!isVisible) {
+        toastEl.style.display = 'none'
+      }
+    }
+  }
+  function loop(timestamp) {
+    if (!lastTime) lastTime = timestamp
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
+    lastTime = timestamp
+
+    updateState(dt)
+    draw()
+
+    // Sleep check
+    const isMoving = Math.abs(springs.opacity.vel) > 0.01 ||
+      Math.abs(springs.scale.vel) > 0.01 ||
+      springs.buttons.some(b => Math.abs(b.hover.vel) > 0.01 || Math.abs(b.active.vel) > 0.01)
+
+    if (isMoving || (isVisible && animState.opacity < 0.99)) {
       animationId = requestAnimationFrame(loop)
     } else {
       isAwake = false
@@ -789,3 +895,6 @@
     init()
   }
 })()
+</file>
+
+</files>

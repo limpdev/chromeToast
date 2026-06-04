@@ -3,24 +3,15 @@
   "name": "Toast - Floating Selection Menu",
   "version": "4.0.0",
   "description": "A customizable floating action menu that appears when you select text.",
-  "permissions": [
-    "storage",
-    "clipboardWrite",
-    "clipboardRead",
-    "scripting"
-  ],
+  "permissions": ["storage", "clipboardWrite", "clipboardRead"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content.js"
-      ],
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
       "run_at": "document_end"
     }
   ],
@@ -35,12 +26,8 @@
   },
   "web_accessible_resources": [
     {
-      "resources": [
-        "assets/*.png"
-      ],
-      "matches": [
-        "chrome-extension://*/*"
-      ]
+      "resources": ["assets/*.png"],
+      "matches": ["chrome-extension://*/*"]
     }
   ]
 }

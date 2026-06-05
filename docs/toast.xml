@@ -41,6 +41,7 @@ The content is organized as follows:
 </file_summary>
 
 <directory_structure>
+background.js
 build.js
 content.js
 manifest.json
@@ -51,6 +52,44 @@ popup.js
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="background.js">
+import TurndownService from 'turndown'
+import { gfm } from 'turndown-plugin-gfm'
+
+const turndownService = new TurndownService({
+    headingStyle: 'atx',
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    fence: '```',
+    hr: '---',
+    linkStyle: 'inlined'
+})
+turndownService.use(gfm)
+turndownService.addRule('removeHidden', {
+    filter: el => el.style && (el.style.display === 'none' || el.style.visibility === 'hidden'),
+    replacement: () => ''
+})
+turndownService.addRule('lineBreak', {
+    filter: 'br',
+    replacement: () => '  \n'
+})
+
+chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+    if (req.type === 'MARKDOWN') {
+        sendResponse({ markdown: turndownService.turndown(req.html) })
+    }
+    else if (req.type === 'WEBHOOK') {
+        fetch(req.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selection: req.text, url: sender.tab.url })
+        }).catch(err => console.error('Webhook fail:', err))
+        sendResponse({ success: true })
+    }
+    return true // Async response
+})
+</file>
 
 <file path="build.js">
 #!/usr/bin/env node
@@ -103,19 +142,6 @@ function prepareDist() {
 }
 
 // ─── Dev Mode ───────────────────────────────────────────────────────────────
-//
-// How it works:
-//   1. esbuild runs in watch mode — rebuilds content.js and popup.js on save.
-//   2. A tiny SSE server runs on localhost:8099. The dist/reload-shim.js
-//      script (auto-injected during dev) connects to it and calls
-//      chrome.runtime.reload() whenever the server sends a "reload" event.
-//   3. A manifest.json watcher triggers a full manifest re-copy + SSE push.
-//   4. popup.html is watched separately since esbuild doesn't handle HTML.
-//
-// Setup (one-time):
-//   - Load dist/ as an unpacked extension in chrome://extensions
-//   - Enable "Developer mode"
-//   - No extra Chrome extension needed — the shim is injected automatically.
 
 const SSE_PORT = 8099
 let sseClients = []
@@ -149,8 +175,6 @@ function pushReload(reason) {
   sseClients.forEach(res => res.write('data: reload\n\n'))
 }
 
-// Minimal reload shim injected into dist/ only during dev builds.
-// It reconnects automatically if the dev server restarts.
 const reloadShim = `
 ;(function devReloadShim() {
   const url = 'http://localhost:${SSE_PORT}/events'
@@ -172,12 +196,9 @@ function writeReloadShim() {
   fs.writeFileSync(path.join(distDir, 'reload-shim.js'), reloadShim)
 }
 
-// Patch manifest to include the shim as a content_script.
-// We write a modified copy — the source manifest.json is never touched.
 function writeDevManifest() {
   const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'))
 
-  // Add reload-shim.js to the existing content_scripts entry
   if (manifest.content_scripts && manifest.content_scripts.length > 0) {
     const entry = manifest.content_scripts[0]
     if (!entry.js.includes('reload-shim.js')) {
@@ -185,7 +206,6 @@ function writeDevManifest() {
     }
   }
 
-  // content_scripts can't reach SSE directly without host_permissions in MV3
   if (!manifest.host_permissions) manifest.host_permissions = []
   const shimOrigin = `http://localhost:${SSE_PORT}/`
   if (!manifest.host_permissions.includes(shimOrigin)) {
@@ -199,21 +219,18 @@ function writeDevManifest() {
 }
 
 function watchStaticFiles() {
-  // Watch manifest.json
   fs.watch('manifest.json', () => {
     console.log('[dev] manifest.json changed')
     writeDevManifest()
     pushReload('manifest.json')
   })
 
-  // Watch popup.html
   fs.watch('popup.html', () => {
     console.log('[dev] popup.html changed')
     minifyAndCopyHtml()
     pushReload('popup.html')
   })
 
-  // Watch assets/
   if (fs.existsSync('assets')) {
     fs.watch('assets', () => {
       copyAssets()
@@ -245,11 +262,10 @@ async function runDev() {
     }
   })
 
-  // Content script (bundled IIFE)
   const contentCtx = await esbuild.context({
     entryPoints: ['content.js'],
     bundle: true,
-    minify: false, // readable during dev
+    minify: false,
     sourcemap: 'inline',
     outfile: path.join(distDir, 'content.js'),
     target: 'chrome100',
@@ -257,7 +273,6 @@ async function runDev() {
     plugins: [onRebuild('content.js')]
   })
 
-  // Popup script
   const popupCtx = await esbuild.context({
     entryPoints: ['popup.js'],
     bundle: false,
@@ -268,7 +283,18 @@ async function runDev() {
     plugins: [onRebuild('popup.js')]
   })
 
-  await Promise.all([contentCtx.watch(), popupCtx.watch()])
+  const bgCtx = await esbuild.context({
+    entryPoints: ['background.js'],
+    bundle: true,
+    minify: false,
+    sourcemap: 'inline',
+    outfile: path.join(distDir, 'background.js'),
+    target: 'chrome100',
+    format: 'esm',
+    plugins: [onRebuild('background.js')]
+  })
+
+  await Promise.all([contentCtx.watch(), popupCtx.watch(), bgCtx.watch()])
   watchStaticFiles()
 
   console.log('[dev] Watching for changes. Load dist/ as an unpacked extension.')
@@ -299,6 +325,15 @@ async function runBuild() {
     minify: true,
     outfile: path.join(distDir, 'popup.js'),
     target: 'chrome100'
+  })
+
+  esbuild.buildSync({
+    entryPoints: ['background.js'],
+    bundle: true,
+    minify: true,
+    outfile: path.join(distDir, 'background.js'),
+    target: 'chrome100',
+    format: 'esm'
   })
 
   console.log('Compilation complete.')
@@ -1175,57 +1210,14 @@ document.addEventListener('DOMContentLoaded', () => {
 })
 </file>
 
-<file path="manifest.json">
-{
-  "manifest_version": 3,
-  "name": "Toast - Floating Selection Menu",
-  "version": "3.5.0",
-  "description": "A customizable floating action menu that appears when you select text.",
-  "permissions": [
-    "storage",
-    "clipboardWrite"
-  ],
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content.js"
-      ],
-      "run_at": "document_end"
-    }
-  ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_title": "Toast Settings"
-  },
-  "icons": {
-    "16": "assets/icon16.png",
-    "48": "assets/icon48.png",
-    "128": "assets/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "assets/*.png"
-      ],
-      "matches": [
-        "chrome-extension://*/*"
-      ]
-    }
-  ]
-}
-</file>
-
 <file path="content.js">
 // content.js - Toast Selection Popup (Hybrid DOM + Canvas)
-import TurndownService from 'turndown'
-import { gfm } from 'turndown-plugin-gfm'
-;(function () {
+; (function () {
   'use strict'
   // --- Global State ---
-  let toastEl, canvas, ctx
+  let hostEl, shadow, toastEl, canvas, ctx
+  let isAwake = false
+  let hoverTimeout = null
   let currentSelection = ''
   let selectionRange = null
   let isVisible = false
@@ -1256,7 +1248,7 @@ import { gfm } from 'turndown-plugin-gfm'
   const HOVER_STIFFNESS = 320
   const HOVER_DAMPING = 26
   let lastTime = null
-  function stepSpring (spring, target, stiffness, damping, dt) {
+  function stepSpring(spring, target, stiffness, damping, dt) {
     const force = -stiffness * (spring.val - target)
     const dampen = -damping * spring.vel
     spring.vel += (force + dampen) * dt
@@ -1314,50 +1306,33 @@ import { gfm } from 'turndown-plugin-gfm'
       }
     ]
   }
-  // --- Markdown Conversion ---
-  const turndownService = new TurndownService({
-    headingStyle: 'atx',
-    bulletListMarker: '-',
-    codeBlockStyle: 'fenced',
-    fence: '```',
-    hr: '---',
-    linkStyle: 'inlined'
-  })
-  turndownService.use(gfm)
-
   // Strip elements that are invisible or purely presentational
-  turndownService.addRule('removeHidden', {
-    filter: el =>
-      el.style &&
-      (el.style.display === 'none' || el.style.visibility === 'hidden'),
-    replacement: () => ''
-  })
-
-  // Preserve <br> as a markdown line break
-  turndownService.addRule('lineBreak', {
-    filter: 'br',
-    replacement: () => '  \n'
-  })
+  // turndownService.addRule('removeHidden', {
+  //   filter: el =>
+  //     el.style &&
+  //     (el.style.display === 'none' || el.style.visibility === 'hidden'),
+  //   replacement: () => ''
+  // })
 
   let config = JSON.parse(JSON.stringify(defaultConfig))
   // --- Helpers ---
   const hexToRgbCache = new Map()
-  function hexToRgb (hex) {
+  function hexToRgb(hex) {
     if (hexToRgbCache.has(hex)) return hexToRgbCache.get(hex)
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
     const rgb = result
       ? {
-          r: parseInt(result[1], 16),
-          g: parseInt(result[2], 16),
-          b: parseInt(result[3], 16)
-        }
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      }
       : { r: 0, g: 0, b: 0 }
     hexToRgbCache.set(hex, rgb)
     return rgb
   }
   // Resolves an <img> src to an absolute URL.
   // Returns null if the src is a data: or blob: URI (not usable by remote engines).
-  function resolveImageUrl (src) {
+  function resolveImageUrl(src) {
     if (!src) return null
     if (src.startsWith('data:') || src.startsWith('blob:')) return null
     try {
@@ -1367,7 +1342,7 @@ import { gfm } from 'turndown-plugin-gfm'
     }
   }
   // --- Initialization ---
-  function init () {
+  function init() {
     chrome.storage.sync.get(['canvasToastConfig'], result => {
       applyConfig(result.canvasToastConfig)
       setupDOM()
@@ -1383,7 +1358,7 @@ import { gfm } from 'turndown-plugin-gfm'
       }
     })
   }
-  function applyConfig (newConfig) {
+  function applyConfig(newConfig) {
     if (!newConfig) return
     config.buttons =
       newConfig.buttons && newConfig.buttons.length > 0
@@ -1394,14 +1369,27 @@ import { gfm } from 'turndown-plugin-gfm'
     }
   }
   // --- DOM Setup ---
-  function setupDOM () {
-    if (toastEl && document.body.contains(toastEl)) {
-      document.body.removeChild(toastEl)
+  function setupDOM() {
+    if (hostEl && document.body.contains(hostEl)) {
+      document.body.removeChild(hostEl)
     }
+
+    hostEl = document.createElement('div')
+    hostEl.id = 'toast-extension-root'
+    Object.assign(hostEl.style, {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      zIndex: '2147483647',
+      pointerEvents: 'none',
+      all: 'initial'
+    })
+
+    shadow = hostEl.attachShadow({ mode: 'closed' })
+
     toastEl = document.createElement('div')
     Object.assign(toastEl.style, {
       position: 'fixed',
-      zIndex: '2147483647',
       display: 'none',
       pointerEvents: 'none',
       backdropFilter: 'blur(16px)',
@@ -1414,16 +1402,19 @@ import { gfm } from 'turndown-plugin-gfm'
       opacity: '0',
       transform: 'scale(0.7)'
     })
+
     canvas = document.createElement('canvas')
     Object.assign(canvas.style, {
       display: 'block',
       pointerEvents: 'none'
     })
+
     toastEl.appendChild(canvas)
-    document.body.appendChild(toastEl)
+    shadow.appendChild(toastEl)
+    document.body.appendChild(hostEl)
     ctx = canvas.getContext('2d', { alpha: true })
   }
-  function applyWrapperStyles () {
+  function applyWrapperStyles() {
     if (!toastEl) return
     const { style } = config
     const bgRgb = hexToRgb(style.bgColor)
@@ -1431,7 +1422,7 @@ import { gfm } from 'turndown-plugin-gfm'
     toastEl.style.borderRadius = style.borderRadius + 'px'
   }
   // Replace attachEvents() with:
-  function attachEvents () {
+  function attachEvents() {
     // Text selection
     document.addEventListener('mouseup', handleMouseUp)
     document.addEventListener('mousedown', handleMouseDown)
@@ -1451,48 +1442,30 @@ import { gfm } from 'turndown-plugin-gfm'
     toastEl.addEventListener('mouseleave', () => {
       animState.hoveredButtonIndex = -1
       isMouseDown = false
+      wake()
     })
   }
   // Replace handleImageClick with these three functions:
 
-  function handleImageMouseOver (e) {
-    const target = e.target
-    if (!(target instanceof HTMLImageElement)) return
-    if (toastEl && toastEl.contains(target)) return
-    hoveredImage = target
+  function handleImageMouseOver(e) {
+    clearTimeout(hoverTimeout)
+    hoverTimeout = setTimeout(() => {
+      const target = e.target
+      if (!(target instanceof HTMLImageElement)) return
+      if (hostEl && hostEl.contains(target)) return
+      hoveredImage = target
+    }, 50)
   }
 
-  function handleImageMouseOut (e) {
+  function handleImageMouseOut(e) {
     const target = e.target
     if (!(target instanceof HTMLImageElement)) return
-    // If the cursor moves into the toast itself, keep hoveredImage alive
-    // so the user can Ctrl+click a button without losing context
-    if (toastEl && toastEl.contains(e.relatedTarget)) return
+    if (hostEl && hostEl.contains(e.relatedTarget)) return
     if (target === hoveredImage) hoveredImage = null
   }
 
-  function handleKeyDown (e) {
-    // Only Control, not Ctrl+C / Ctrl+V / etc.
-    if (e.key !== 'Control' || e.ctrlKey === false) return
-    if (!hoveredImage) return
-
-    const resolved = resolveImageUrl(hoveredImage.src)
-    imageContext = {
-      src: hoveredImage.src,
-      resolvedUrl: resolved,
-      isAccessible: resolved !== null
-    }
-    currentContext = 'image'
-    window.getSelection()?.removeAllRanges()
-    currentSelection = ''
-
-    const rect = hoveredImage.getBoundingClientRect()
-    showToast(rect)
-  }
-  // --- Selection Handlers ---
-  let selectionRafId = null
-  function handleMouseUp (e) {
-    if (toastEl && toastEl.contains(e.target)) return
+  function handleMouseUp(e) {
+    if (hostEl && hostEl.contains(e.target)) return
     if (selectionRafId) cancelAnimationFrame(selectionRafId)
     selectionRafId = requestAnimationFrame(() => {
       selectionRafId = null
@@ -1516,34 +1489,108 @@ import { gfm } from 'turndown-plugin-gfm'
       }
     })
   }
-  // Replace handleMouseDown with:
-  function handleMouseDown (e) {
-    if (isVisible && toastEl && !toastEl.contains(e.target)) {
+
+  function handleMouseDown(e) {
+    if (isVisible && hostEl && !hostEl.contains(e.target)) {
       hideToast()
     }
   }
-  function handleScroll () {
+
+  function handleMouseMove(e) {
+    if (!isVisible) return
+    const rect = canvas.getBoundingClientRect()
+    const mx = e.clientX - rect.left
+    const my = e.clientY - rect.top
+    let hoveredIndex = -1
+    buttons.forEach((btn, i) => {
+      if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+        hoveredIndex = i
+      }
+    })
+    if (animState.hoveredButtonIndex !== hoveredIndex) {
+      animState.hoveredButtonIndex = hoveredIndex
+      wake()
+    }
+    canvas.style.cursor = hoveredIndex !== -1 ? 'pointer' : 'default'
+  }
+
+  function handleKeyDown(e) {
+    // Only Control, not Ctrl+C / Ctrl+V / etc.
+    if (e.key !== 'Control' || e.ctrlKey === false) return
+    if (!hoveredImage) return
+
+    const resolved = resolveImageUrl(hoveredImage.src)
+    imageContext = {
+      src: hoveredImage.src,
+      resolvedUrl: resolved,
+      isAccessible: resolved !== null
+    }
+    currentContext = 'image'
+    window.getSelection()?.removeAllRanges()
+    currentSelection = ''
+
+    const rect = hoveredImage.getBoundingClientRect()
+    showToast(rect)
+  }
+  // --- Selection Handlers ---
+  let selectionRafId = null
+  function handleMouseUp(e) {
+    if (hostEl && hostEl.contains(e.target)) return
+    if (selectionRafId) cancelAnimationFrame(selectionRafId)
+    selectionRafId = requestAnimationFrame(() => {
+      selectionRafId = null
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0) return
+      const text = sel.toString().trim()
+      if (text.length > 0) {
+        currentContext = 'text'
+        currentSelection = text
+        imageContext = { src: null, resolvedUrl: null, isAccessible: true }
+        try {
+          selectionRange = sel.getRangeAt(0)
+          const rect = selectionRange.getBoundingClientRect()
+          if (rect.width === 0 && rect.height === 0) return
+          showToast(rect)
+        } catch (err) {
+          console.error('[Toast] Range error', err)
+        }
+      } else {
+        if (!isMouseDown) hideToast()
+      }
+    })
+  }
+
+  function handleScroll() {
     if (isVisible) hideToast()
   }
   // --- Toast Lifecycle ---
-  function getContextButtons () {
+  function getContextButtons() {
     return config.buttons.filter(btn => {
       const contexts = btn.contexts
-      // Backwards compat: buttons without a contexts field show in text context only
-      if (!contexts || contexts.length === 0) return currentContext === 'text'
-      return contexts.includes(currentContext)
+      const hasContext = (!contexts || contexts.length === 0) ? currentContext === 'text' : contexts.includes(currentContext)
+
+      if (!hasContext) return false
+
+      if (btn.regex && currentContext === 'text') {
+        try {
+          const rgx = new RegExp(btn.regex, 'i')
+          return rgx.test(currentSelection)
+        } catch (e) {
+          return false
+        }
+      }
+
+      return true
     })
   }
-  function showToast (rect) {
+
+  function showToast(rect) {
     const { style } = config
     const contextBtns = getContextButtons()
     const baseBtnSize = style.iconSize + style.iconPadding * 2
     const count = contextBtns.length
     if (count === 0) return
-    const totalWidth =
-      style.padding * 2 +
-      baseBtnSize * count +
-      style.buttonSpacing * (count - 1)
+    const totalWidth = style.padding * 2 + baseBtnSize * count + style.buttonSpacing * (count - 1)
     const totalHeight = style.padding * 2 + baseBtnSize
     const dpr = window.devicePixelRatio || 1
     canvas.style.width = totalWidth + 'px'
@@ -1555,22 +1602,19 @@ import { gfm } from 'turndown-plugin-gfm'
     toastEl.style.width = totalWidth + 'px'
     toastEl.style.height = totalHeight + 'px'
     applyWrapperStyles()
-    // For images, anchor to the top-center of the image.
-    // For text, anchor above the selection (falling back to below).
+
     let left = rect.left + rect.width / 2 - totalWidth / 2
-    let top =
-      currentContext === 'image'
-        ? rect.top - totalHeight - 16
-        : rect.top - totalHeight - 16
+    let top = currentContext === 'image' ? rect.top - totalHeight - 16 : rect.top - totalHeight - 16
     if (top < 8) top = rect.bottom + 16
     if (left < 10) left = 10
-    if (left + totalWidth > window.innerWidth - 10)
-      left = window.innerWidth - totalWidth - 10
+    if (left + totalWidth > window.innerWidth - 10) left = window.innerWidth - totalWidth - 10
+
     toastEl.style.left = left + 'px'
     toastEl.style.top = top + 'px'
     toastEl.style.display = 'block'
     toastEl.style.pointerEvents = 'auto'
     canvas.style.pointerEvents = 'auto'
+
     if (!isVisible) {
       isVisible = true
       springs.opacity.val = 0
@@ -1579,42 +1623,59 @@ import { gfm } from 'turndown-plugin-gfm'
       springs.scale.vel = 0
       toastEl.style.opacity = '0'
       toastEl.style.transform = 'scale(0.8)'
-      lastTime = null
-      startLoop()
-    } else {
-      // Already visible (e.g. re-clicked another image) — just redraw
-      requestAnimationFrame(draw)
     }
+    wake()
   }
-  function hideToast () {
+
+  function hideToast() {
     isVisible = false
     toastEl.style.pointerEvents = 'none'
     canvas.style.pointerEvents = 'none'
     animState.hoveredButtonIndex = -1
     isMouseDown = false
+    wake()
   }
   // --- Animation Loop ---
-  function startLoop () {
-    if (animationId) cancelAnimationFrame(animationId)
-    animationId = requestAnimationFrame(loop)
+  function wake() {
+    if (!isAwake) {
+      isAwake = true
+      lastTime = null
+      if (animationId) cancelAnimationFrame(animationId)
+      animationId = requestAnimationFrame(loop)
+    }
   }
-  function loop (timestamp) {
+
+  function loop(timestamp) {
     if (!lastTime) lastTime = timestamp
     const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
     lastTime = timestamp
-    const opacityAtRest = Math.abs(springs.opacity.val)
-    Math.abs(springs.opacity.val) < 0.001 &&
-      Math.abs(springs.opacity.vel) < 0.001
-    if (!isVisible && opacityAtRest && springs.opacity.val < 0.001) {
-      animationId = null
-      toastEl.style.display = 'none'
-      return
-    }
+
     updateState(dt)
     draw()
-    animationId = requestAnimationFrame(loop)
+
+    // Must check BOTH velocity AND distance to target so springs don't sleep mid-bounce
+    const opacityTarget = isVisible ? 1 : 0
+    const scaleTarget = isVisible ? 1 : 0.9
+
+    const opacityMoving = Math.abs(springs.opacity.vel) > 0.01 || Math.abs(springs.opacity.val - opacityTarget) > 0.01
+    const scaleMoving = Math.abs(springs.scale.vel) > 0.01 || Math.abs(springs.scale.val - scaleTarget) > 0.01
+
+    const buttonsMoving = springs.buttons.some((b, i) => {
+      const hoverTarget = animState.hoveredButtonIndex === i ? 1 : 0
+      const activeTarget = (animState.hoveredButtonIndex === i && isMouseDown) ? 1 : 0
+      return Math.abs(b.hover.vel) > 0.01 || Math.abs(b.hover.val - hoverTarget) > 0.01 ||
+        Math.abs(b.active.vel) > 0.01 || Math.abs(b.active.val - activeTarget) > 0.01
+    })
+
+    if (opacityMoving || scaleMoving || buttonsMoving) {
+      animationId = requestAnimationFrame(loop)
+    } else {
+      isAwake = false
+      animationId = null
+      if (!isVisible) toastEl.style.display = 'none'
+    }
   }
-  function updateState (dt) {
+  function updateState(dt) {
     const targetOpacity = isVisible ? 1 : 0
     const targetScale = isVisible ? 1 : 0.9
     stepSpring(
@@ -1654,7 +1715,7 @@ import { gfm } from 'turndown-plugin-gfm'
       animState.buttonActive[i] = sb.active.val
     })
   }
-  function draw () {
+  function draw() {
     const { style } = config
     const contextBtns = getContextButtons()
     const dpr = window.devicePixelRatio || 1
@@ -1705,13 +1766,13 @@ import { gfm } from 'turndown-plugin-gfm'
     })
   }
   // --- Icon Loading ---
-  function svgToDataUri (svgStr) {
+  function svgToDataUri(svgStr) {
     return (
       'data:image/svg+xml;charset=utf-8;base64,' +
       window.btoa(unescape(encodeURIComponent(svgStr)))
     )
   }
-  function loadSingleIcon (btn) {
+  function loadSingleIcon(btn) {
     return new Promise(resolve => {
       const img = new Image()
       let src = btn.icon || ''
@@ -1731,7 +1792,7 @@ import { gfm } from 'turndown-plugin-gfm'
       img.src = src
     })
   }
-  function loadIcons () {
+  function loadIcons() {
     loadedIcons = {}
     iconsReady = false
     const total = config.buttons.length
@@ -1755,42 +1816,34 @@ import { gfm } from 'turndown-plugin-gfm'
       if (isVisible) requestAnimationFrame(draw)
     })
   }
-  // --- Mouse Interaction ---
-  function handleMouseMove (e) {
-    if (!isVisible) return
-    const rect = canvas.getBoundingClientRect()
-    const mx = e.clientX - rect.left
-    const my = e.clientY - rect.top
-    let hoveredIndex = -1
-    buttons.forEach((btn, i) => {
-      if (
-        mx >= btn.x &&
-        mx <= btn.x + btn.w &&
-        my >= btn.y &&
-        my <= btn.y + btn.h
-      ) {
-        hoveredIndex = i
-      }
-    })
-    animState.hoveredButtonIndex = hoveredIndex
-    canvas.style.cursor = hoveredIndex !== -1 ? 'pointer' : 'default'
-  }
-  function handleCanvasDown () {
+
+  function handleCanvasDown() {
     if (animState.hoveredButtonIndex !== -1) isMouseDown = true
   }
-  async function handleCanvasUp () {
+  async function handleCanvasUp() {
     isMouseDown = false
+    wake()
     if (animState.hoveredButtonIndex === -1) return
     const btn = buttons[animState.hoveredButtonIndex]
     if (!btn) return
     const { type, url, action } = btn.data
+
     if (type === 'link') {
-      const targetUrl = url.includes('%s')
-        ? url.replace('%s', encodeURIComponent(currentSelection))
-        : url
+      const targetUrl = url.includes('%s') ? url.replace('%s', encodeURIComponent(currentSelection)) : url
       window.open(targetUrl, '_blank')
     } else if (type === 'image-search') {
       handleImageSearch(url)
+    } else if (type === 'transform') {
+      let text = currentSelection
+      if (action === 'uppercase') text = text.toUpperCase()
+      if (action === 'lowercase') text = text.toLowerCase()
+      if (action === 'urlencode') text = encodeURIComponent(text)
+      if (selectionRange) {
+        selectionRange.deleteContents()
+        selectionRange.insertNode(document.createTextNode(text))
+      }
+    } else if (type === 'webhook') {
+      chrome.runtime.sendMessage({ type: 'WEBHOOK', url: url, text: currentSelection })
     } else if (type === 'action') {
       if (action === 'copy') {
         await handleCopy()
@@ -1810,8 +1863,38 @@ import { gfm } from 'turndown-plugin-gfm'
     }
     hideToast()
   }
+
+  async function handleMarkdownCopy(btn) {
+    const source = btn.markdownSource || 'selection'
+    let htmlPayload = ''
+
+    if (source === 'page') {
+      const clone = document.body.cloneNode(true)
+      const noisy = [
+        'script', 'style', 'noscript', 'iframe', 'nav',
+        'header', 'footer', 'aside', '[aria-hidden="true"]'
+      ]
+      noisy.forEach(sel => {
+        clone.querySelectorAll(sel).forEach(el => el.remove())
+      })
+      const title = document.title.trim()
+      htmlPayload = title ? `<h1>${title}</h1>\n${clone.innerHTML}` : clone.innerHTML
+    } else {
+      if (!selectionRange) return
+      const fragment = selectionRange.cloneContents()
+      const wrapper = document.createElement('div')
+      wrapper.appendChild(fragment)
+      htmlPayload = wrapper.innerHTML
+    }
+
+    chrome.runtime.sendMessage({ type: 'MARKDOWN', html: htmlPayload }, res => {
+      if (res && res.markdown) {
+        navigator.clipboard.writeText(res.markdown).catch(console.error)
+      }
+    })
+  }
   // --- Action Handlers ---
-  function handleImageSearch (urlTemplate) {
+  function handleImageSearch(urlTemplate) {
     if (!imageContext.isAccessible || !imageContext.resolvedUrl) {
       // data: or blob: URI — can't be fetched by remote engines
       console.warn(
@@ -1825,51 +1908,7 @@ import { gfm } from 'turndown-plugin-gfm'
     )
     window.open(targetUrl, '_blank')
   }
-  async function handleMarkdownCopy (btn) {
-    const source = btn.markdownSource || 'selection'
-    let markdown = ''
-
-    if (source === 'page') {
-      const clone = document.body.cloneNode(true)
-
-      // Strip noisy, non-content elements
-      const noisy = [
-        'script',
-        'style',
-        'noscript',
-        'iframe',
-        'nav',
-        'header',
-        'footer',
-        'aside',
-        '[aria-hidden="true"]'
-      ]
-      noisy.forEach(sel => {
-        clone.querySelectorAll(sel).forEach(el => el.remove())
-      })
-
-      // Prepend page title as an h1
-      const title = document.title.trim()
-      const body = turndownService.turndown(clone.innerHTML)
-      markdown = title ? `# ${title}\n\n${body}` : body
-    } else {
-      // Selection mode — preserve structure by working from the range's HTML
-      if (!selectionRange) return
-      const fragment = selectionRange.cloneContents()
-      const wrapper = document.createElement('div')
-      wrapper.appendChild(fragment)
-      markdown = turndownService.turndown(wrapper.innerHTML)
-    }
-
-    if (!markdown.trim()) return
-
-    try {
-      await navigator.clipboard.writeText(markdown)
-    } catch (err) {
-      console.error('[Toast] Markdown copy failed:', err)
-    }
-  }
-  async function handleCopy () {
+  async function handleCopy() {
     if (currentContext === 'image') {
       await copyImage()
     } else {
@@ -1880,7 +1919,7 @@ import { gfm } from 'turndown-plugin-gfm'
       }
     }
   }
-  async function copyImage () {
+  async function copyImage() {
     const src = imageContext.resolvedUrl || imageContext.src
     if (!src) return
     // data: URI — decode and write directly, no fetch needed
@@ -1921,7 +1960,7 @@ import { gfm } from 'turndown-plugin-gfm'
     }
   }
   // Draws any image blob onto an offscreen canvas and exports as PNG
-  function normaliseToPng (blob) {
+  function normaliseToPng(blob) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(blob)
       const img = new Image()
@@ -1945,7 +1984,7 @@ import { gfm } from 'turndown-plugin-gfm'
     })
   }
   // --- Drawing Utilities ---
-  function roundRect (ctx, x, y, w, h, r) {
+  function roundRect(ctx, x, y, w, h, r) {
     if (w < 2 * r) r = w / 2
     if (h < 2 * r) r = h / 2
     ctx.beginPath()
@@ -1963,6 +2002,42 @@ import { gfm } from 'turndown-plugin-gfm'
     init()
   }
 })()
+</file>
+
+<file path="manifest.json">
+{
+  "manifest_version": 3,
+  "name": "Toast - Floating Selection Menu",
+  "version": "4.0.0",
+  "description": "A customizable floating action menu that appears when you select text.",
+  "permissions": ["storage", "clipboardWrite", "clipboardRead"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Toast Settings"
+  },
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*.png"],
+      "matches": ["chrome-extension://*/*"]
+    }
+  ]
+}
 </file>
 
 </files>

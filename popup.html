@@ -5,260 +5,508 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Toast Preferences</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap"
+    rel="stylesheet">
   <style>
     :root {
-      --bg-color: #0f172a;
-      --card-bg: #1e293b;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
-      --text: #f1f5f9;
-      --text-muted: #94a3b8;
-      --border: #334155;
-      --danger: #ef4444;
+      --bg: #0a0b0d;
+      --surface: #111316;
+      --surface2: #191c21;
+      --border: rgba(255, 255, 255, 0.07);
+      --border-hi: rgba(255, 255, 255, 0.14);
+      --accent: #4f8ef7;
+      --accent-lo: rgba(79, 142, 247, 0.12);
+      --accent-mid: rgba(79, 142, 247, 0.22);
+      --text: #e8eaed;
+      --text-dim: #6b7280;
+      --text-mid: #9ca3af;
+      --danger: #f87171;
+      --success: #34d399;
+      --mono: 'DM Mono', monospace;
+      --r: 6px;
+    }
+
+    ::-webkit-scrollbar {
+      display: none;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
 
     body {
-      width: 360px;
-      margin: 0;
-      padding: 16px;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: var(--bg-color);
+      width: 700px;
+      min-height: 560px;
+      background: var(--bg);
       color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
-    h2 {
-      margin: 0 0 16px 0;
-      font-size: 18px;
-      font-weight: 600;
+    /* ── Top bar ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .topbar-brand {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+    }
+
+    .topbar-brand strong {
+      color: var(--text);
+      font-style: italic;
+      text-decoration: line-through;
+      opacity: .35;
+      margin: 0 5px;
+    }
+
+    .topbar-brand em {
+      color: var(--text);
+      font-style: normal;
+      text-decoration: double;
+      font-weight: 500;
+    }
+
+    .topbar-actions {
       display: flex;
       align-items: center;
       gap: 8px;
     }
 
-    h2 svg {
-      width: 20px;
-      height: 20px;
-      color: var(--accent);
+    /* ── Main layout ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      flex: 1;
+      /* changed from hidden to auto */
+      overflow-y: auto;
+      /* moved from config-pane */
+      scrollbar-width: thin;
+      scrollbar-color: var(--surface2) transparent;
     }
 
-    .section {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 16px;
+    /* Moved scrollbar styling to apply to .layout */
+    .layout::-webkit-scrollbar {
+      width: 4px;
     }
 
-    .section-title {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
-      font-weight: 700;
-      margin-bottom: 12px;
-      display: block;
+    .layout::-webkit-scrollbar-thumb {
+      background: var(--surface2);
+      border-radius: 2px;
+    }
+
+    /* ── Config pane ── */
+    .config-pane {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-right: 1px solid var(--border);
+      /* REMOVED overflow-y and scrollbar styling from here */
+    }
+
+    .config-pane::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .config-pane::-webkit-scrollbar-thumb {
+      background: var(--surface2);
+      border-radius: 2px;
+    }
+
+    /* ── Preview pane ── */
+    .preview-pane {
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+
+      /* The magic combo: */
+      position: sticky;
+      top: 0;
+      height: 225px;
+      align-self: start;
+
       border-bottom: 1px solid var(--border);
-      padding-bottom: 4px;
     }
 
-    .control-row {
+    .preview-header {
+      padding: 10px 12px 8px;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      font-weight: 500;
+      border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 12px;
-      font-size: 13px;
     }
 
-    .control-row:last-child {
-      margin-bottom: 0;
+    .preview-header-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: pulse-dot 2s ease-in-out infinite;
     }
 
-    .control-col {
+    @keyframes pulse-dot {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.3;
+      }
+    }
+
+    .preview-stage {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(ellipse 60% 50% at 50% 50%, rgba(79, 142, 247, 0.04) 0%, transparent 70%),
+        repeating-linear-gradient(0deg, transparent, transparent 19px,
+          rgba(255, 255, 255, 0.025) 19px, rgba(255, 255, 255, 0.025) 20px),
+        repeating-linear-gradient(90deg, transparent, transparent 19px,
+          rgba(255, 255, 255, 0.025) 19px, rgba(255, 255, 255, 0.025) 20px);
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .preview-canvas-wrap {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      font-size: 13px;
+      align-items: center;
+      gap: 16px;
     }
 
-    input[type="color"] {
-      width: 28px;
-      height: 28px;
-      border: none;
+    .preview-label {
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    #previewCanvas {
+      display: block;
+      border-radius: 0;
+      /* border-radius applied dynamically */
+      image-rendering: crisp-edges;
+    }
+
+    .preview-footer {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      font-size: 9px;
+      color: var(--text-dim);
+    }
+
+    .preview-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .preview-stat-val {
+      color: var(--text-mid);
+      font-size: 10px;
+    }
+
+    /* ── Sections ── */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 10px;
       cursor: pointer;
-      background: none;
-      border-radius: 4px;
-      appearance: none;
-      -webkit-appearance: none;
+      user-select: none;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.15s;
     }
 
+    .section.open .section-head {
+      border-bottom-color: var(--border);
+    }
+
+    .section-head:hover {
+      background: var(--surface2);
+    }
+
+    .section-title {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+    }
+
+    .section-chevron {
+      color: var(--text-dim);
+      font-size: 10px;
+      transition: transform 0.2s;
+      line-height: 1;
+    }
+
+    .section.open .section-chevron {
+      transform: rotate(90deg);
+    }
+
+    .section-body {
+      display: none;
+      padding: 10px;
+    }
+
+    .section.open .section-body {
+      display: block;
+    }
+
+    /* ── Control rows ── */
+    .ctrl {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+      gap: 8px;
+    }
+
+    .ctrl+.ctrl {
+      border-top: 1px solid var(--border);
+    }
+
+    .ctrl-label {
+      color: var(--text-mid);
+      font-size: 11px;
+      flex-shrink: 0;
+      min-width: 90px;
+    }
+
+    .ctrl-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Range inputs */
     input[type="range"] {
-      width: 110px;
-      height: 4px;
-      border-radius: 2px;
-      appearance: none;
       -webkit-appearance: none;
-      background: var(--border);
+      appearance: none;
+      width: 100px;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--surface2);
+      outline: none;
+      cursor: pointer;
     }
 
     input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 12px;
-      height: 12px;
-      background: var(--accent);
+      width: 11px;
+      height: 11px;
       border-radius: 50%;
+      background: var(--accent);
+      border: 1.5px solid var(--bg);
       cursor: pointer;
-      margin-top: -4px;
+      transition: transform 0.1s, box-shadow 0.1s;
     }
 
-    input[type="range"]::-webkit-slider-runnable-track {
-      height: 4px;
-      background: var(--border);
-      border-radius: 2px;
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.25);
+      box-shadow: 0 0 0 3px var(--accent-lo);
     }
 
-    .value-display {
-      font-family: monospace;
-      font-size: 11px;
-      color: var(--text-muted);
-      width: 34px;
-      text-align: right;
-    }
-
-    /* Button List Styling */
-    .btn-item {
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 10px;
-      margin-bottom: 8px;
-      transition: border-color 0.2s;
-    }
-
-    .btn-item:hover {
-      border-color: var(--accent);
-    }
-
-    .btn-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .btn-remove {
-      color: var(--text-muted);
+    /* Color inputs */
+    input[type="color"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      border: 1px solid var(--border-hi);
+      border-radius: 4px;
+      background: none;
       cursor: pointer;
+      padding: 0;
+    }
+
+    input[type="color"]::-webkit-color-swatch-wrapper {
       padding: 2px;
     }
 
-    .btn-remove:hover {
+    input[type="color"]::-webkit-color-swatch {
+      border: none;
+      border-radius: 2px;
+    }
+
+    /* Value display */
+    .val {
+      font-size: 10px;
+      color: var(--text-dim);
+      width: 30px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Buttons section ── */
+    #buttonList {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .btn-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+
+    .btn-item:hover {
+      border-color: var(--border-hi);
+    }
+
+    .btn-item-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      cursor: pointer;
+      background: var(--surface2);
+      user-select: none;
+    }
+
+    .btn-item-head:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .btn-item-label {
+      font-size: 10px;
+      color: var(--text-mid);
+      font-weight: 500;
+    }
+
+    .btn-item-controls {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .btn-item-remove {
+      font-size: 10px;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 3px;
+      line-height: 1;
+      transition: color 0.1s, background 0.1s;
+    }
+
+    .btn-item-remove:hover {
       color: var(--danger);
+      background: rgba(248, 113, 113, 0.1);
+    }
+
+    .btn-item-body {
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
 
     input[type="text"],
     textarea,
     select {
       width: 100%;
-      box-sizing: border-box;
-      background: var(--bg-color);
+      background: var(--bg);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 8px;
+      padding: 5px 7px;
       border-radius: 4px;
-      font-size: 12px;
-      margin-bottom: 8px;
+      font-size: 11px;
+      font-family: var(--mono);
+      outline: none;
+      transition: border-color 0.15s;
     }
 
     input[type="text"]:focus,
     textarea:focus,
     select:focus {
-      outline: none;
       border-color: var(--accent);
     }
 
     textarea {
-      height: 50px;
-      font-family: monospace;
+      height: 44px;
       resize: vertical;
+      line-height: 1.4;
     }
 
-    .main-btn {
-      width: 100%;
-      padding: 10px;
-      border: none;
-      border-radius: 6px;
-      font-weight: 600;
+    select {
       cursor: pointer;
-      font-size: 13px;
-      transition: background 0.2s;
     }
 
-    .btn-primary {
-      background: var(--accent);
-      color: white;
+    select option {
+      background: #1a1d23;
     }
 
-    .btn-primary:hover {
-      background: var(--accent-hover);
-    }
-
-    .btn-secondary {
-      background: var(--border);
-      color: var(--text);
-      margin-top: 8px;
-    }
-
-    .btn-secondary:hover {
-      background: #475569;
-    }
-
-    #status {
-      text-align: center;
-      font-size: 12px;
-      margin-top: 10px;
-      height: 16px;
-      color: #10b981;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    .helper-text {
-      font-size: 10px;
-      color: var(--text-muted);
-      margin-bottom: 4px;
+    .field-label {
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 2px;
       display: block;
-    }
-
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    .context-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
     }
 
     .checkbox-group {
       display: flex;
-      gap: 12px;
+      gap: 10px;
+      align-items: center;
     }
 
-    .checkbox-label {
+    .cb-label {
       display: flex;
       align-items: center;
       gap: 4px;
-      font-size: 12px;
+      font-size: 10px;
+      color: var(--text-mid);
       cursor: pointer;
-      color: var(--text-muted);
     }
 
-    .checkbox-label:hover {
+    .cb-label:hover {
       color: var(--text);
     }
 
@@ -267,151 +515,331 @@
       cursor: pointer;
     }
 
-    .preset-picker {
-      background: var(--card-bg);
+    /* ── Action buttons ── */
+    .add-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .btn {
+      padding: 7px 10px;
       border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-top: 4px;
-      margin-bottom: 8px;
+      border-radius: var(--r);
+      font-family: var(--mono);
+      font-size: 11px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      font-weight: 400;
+      text-align: center;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-mid);
+    }
+
+    .btn-ghost:hover {
+      background: var(--surface2);
+      color: var(--text);
+      border-color: var(--border-hi);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: transparent;
+      font-weight: 500;
+    }
+
+    .btn-primary:hover {
+      background: #6fa1f9;
+    }
+
+    /* ── Bottom bar ── */
+    .bottombar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+      gap: 10px;
+    }
+
+    #status {
+      font-size: 10px;
+      color: var(--success);
+      opacity: 0;
+      transition: opacity 0.3s;
+      letter-spacing: 0.06em;
+    }
+
+    #save {
+      min-width: 120px;
+      padding: 8px 16px;
+    }
+
+    /* ── Preset picker ── */
+    .preset-picker {
+      background: var(--surface2);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--r);
       overflow: hidden;
+      margin-top: 4px;
     }
 
     .preset-row {
       display: block;
       width: 100%;
-      padding: 8px 12px;
+      padding: 7px 10px;
       background: none;
       border: none;
       color: var(--text);
-      font-size: 12px;
+      font-size: 11px;
+      font-family: var(--mono);
       text-align: left;
       cursor: pointer;
     }
 
     .preset-row:hover:not(:disabled) {
-      background: var(--border);
+      background: rgba(255, 255, 255, 0.06);
     }
 
     .preset-row--added {
-      color: var(--text-muted);
+      color: var(--text-dim);
       cursor: default;
+    }
+
+    /* Context toggle tabs */
+    .ctx-tabs {
+      display: flex;
+      gap: 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+
+    .ctx-tab {
+      padding: 4px 10px;
+      font-size: 9px;
+      font-family: var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .ctx-tab.active {
+      background: var(--accent-lo);
+      color: var(--accent);
+    }
+
+    .ctx-tab:hover:not(.active) {
+      background: var(--surface2);
+      color: var(--text-mid);
     }
   </style>
 </head>
 
 <body>
-  <h4 style="letter-spacing: 0.05em;justify-self: center;">
-    Where The <s style="font-style: italic;opacity: .3;"> Sausage </s><strong><u> Toast </u></strong> Is Made
-  </h4>
-
-  <!-- Visual Style -->
-  <div class="section">
-    <span class="section-title">Visual Style</span>
-    <div class="control-row">
-      <span>Background</span>
-      <input type="color" id="bgColor" class="style-input" data-key="bgColor">
-    </div>
-    <div class="control-row">
-      <span>Accent Color</span>
-      <input type="color" id="hoverColor" class="style-input" data-key="hoverColor">
-    </div>
-    <div class="control-row">
-      <span>Opacity</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="bgOpacity" class="style-input" data-key="bgOpacity" min="0.1" max="1" step="0.01">
-        <span class="value-display" id="val-bgOpacity">0.75</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Border Radius</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="borderRadius" class="style-input" data-key="borderRadius" min="0" max="24" step="1">
-        <span class="value-display" id="val-borderRadius">13</span>
-      </div>
+  <!-- Top bar -->
+  <div class="topbar">
+    <span class="topbar-brand">
+      Where The<strong>Sausage</strong><em>Toast</em> Is Made
+    </span>
+    <div class="topbar-actions">
+      <span id="status">saved.</span>
     </div>
   </div>
 
-  <!-- Layout & Spacing -->
-  <div class="section">
-    <span class="section-title">Layout & Spacing</span>
-    <div class="control-row">
-      <span>Icon Size</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="iconSize" class="style-input" data-key="iconSize" min="10" max="32" step="1">
-        <span class="value-display" id="val-iconSize">18</span>
+  <!-- Main layout -->
+  <div class="layout">
+
+    <!-- Config pane -->
+    <div class="config-pane">
+
+      <!-- Visual Style (open by default) -->
+      <div class="section open" id="sec-visual">
+        <div class="section-head" data-section="sec-visual">
+          <span class="section-title">Visual Style</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div class="ctrl">
+            <span class="ctrl-label">Background</span>
+            <div class="ctrl-right">
+              <input type="color" id="bgColor" class="style-input" data-key="bgColor">
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Accent</span>
+            <div class="ctrl-right">
+              <input type="color" id="hoverColor" class="style-input" data-key="hoverColor">
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Opacity</span>
+            <div class="ctrl-right">
+              <input type="range" id="bgOpacity" class="style-input" data-key="bgOpacity" min="0.1" max="1" step="0.01">
+              <span class="val" id="val-bgOpacity">0.75</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Border Radius</span>
+            <div class="ctrl-right">
+              <input type="range" id="borderRadius" class="style-input" data-key="borderRadius" min="0" max="24"
+                step="1">
+              <span class="val" id="val-borderRadius">13</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Layout & Spacing -->
+      <div class="section open" id="sec-layout">
+        <div class="section-head" data-section="sec-layout">
+          <span class="section-title">Layout & Spacing</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div class="ctrl">
+            <span class="ctrl-label">Icon Size</span>
+            <div class="ctrl-right">
+              <input type="range" id="iconSize" class="style-input" data-key="iconSize" min="10" max="32" step="1">
+              <span class="val" id="val-iconSize">18</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Icon Padding</span>
+            <div class="ctrl-right">
+              <input type="range" id="iconPadding" class="style-input" data-key="iconPadding" min="2" max="16" step="1">
+              <span class="val" id="val-iconPadding">5</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Btn Spacing</span>
+            <div class="ctrl-right">
+              <input type="range" id="buttonSpacing" class="style-input" data-key="buttonSpacing" min="0" max="16"
+                step="1">
+              <span class="val" id="val-buttonSpacing">4</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Wall Padding</span>
+            <div class="ctrl-right">
+              <input type="range" id="padding" class="style-input" data-key="padding" min="2" max="20" step="1">
+              <span class="val" id="val-padding">6</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Animation & Interaction -->
+      <div class="section" id="sec-anim">
+        <div class="section-head" data-section="sec-anim">
+          <span class="section-title">Animation & Interaction</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div class="ctrl">
+            <span class="ctrl-label">Hover Scale</span>
+            <div class="ctrl-right">
+              <input type="range" id="hoverScale" class="style-input" data-key="hoverScale" min="1.0" max="1.5"
+                step="0.01">
+              <span class="val" id="val-hoverScale">1.15</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Active Click</span>
+            <div class="ctrl-right">
+              <input type="range" id="activeScale" class="style-input" data-key="activeScale" min="0.5" max="1.0"
+                step="0.01">
+              <span class="val" id="val-activeScale">0.9</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Icon Lift</span>
+            <div class="ctrl-right">
+              <input type="range" id="iconLift" class="style-input" data-key="iconLift" min="0" max="12" step="1">
+              <span class="val" id="val-iconLift">3</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Hover Opacity</span>
+            <div class="ctrl-right">
+              <input type="range" id="hoverOpacity" class="style-input" data-key="hoverOpacity" min="0.05" max="1"
+                step="0.01">
+              <span class="val" id="val-hoverOpacity">0.2</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions & Links -->
+      <div class="section open" id="sec-actions">
+        <div class="section-head" data-section="sec-actions">
+          <span class="section-title">Actions & Links</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div id="buttonList"></div>
+          <div class="add-row">
+            <button id="addBtn" class="btn btn-ghost">+ Action</button>
+            <button id="addImageSearchBtn" class="btn btn-ghost">+ Image Search</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Preview pane -->
+    <div class="preview-pane">
+      <div class="preview-header">
+        <span>Live Preview</span>
+        <div class="preview-header-dot"></div>
+      </div>
+      <div class="preview-stage">
+        <div class="preview-canvas-wrap">
+          <span class="preview-label">hover state</span>
+          <canvas id="previewCanvas"></canvas>
+          <span class="preview-label" id="previewDims">— × —</span>
+        </div>
+      </div>
+      <div class="preview-footer">
+        <div class="preview-stat">
+          <span>buttons</span>
+          <span class="preview-stat-val" id="statBtnCount">0</span>
+        </div>
+        <div class="preview-stat">
+          <span>icon px</span>
+          <span class="preview-stat-val" id="statIconPx">—</span>
+        </div>
+        <div class="preview-stat">
+          <span>bg alpha</span>
+          <span class="preview-stat-val" id="statBgAlpha">—</span>
+        </div>
+        <div class="preview-stat">
+          <span>radius</span>
+          <span class="preview-stat-val" id="statRadius">—</span>
+        </div>
       </div>
     </div>
-    <div class="control-row">
-      <span>Icon Padding</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="iconPadding" class="style-input" data-key="iconPadding" min="2" max="16" step="1">
-        <span class="value-display" id="val-iconPadding">5</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Button Spacing</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="buttonSpacing" class="style-input" data-key="buttonSpacing" min="0" max="16" step="1">
-        <span class="value-display" id="val-buttonSpacing">4</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Wall Padding</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="padding" class="style-input" data-key="padding" min="2" max="20" step="1">
-        <span class="value-display" id="val-padding">6</span>
-      </div>
-    </div>
+
   </div>
 
-  <!-- Animation & Interaction -->
-  <div class="section">
-    <span class="section-title">Animation & Interaction</span>
-    <div class="control-row">
-      <span>Hover Scale</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="hoverScale" class="style-input" data-key="hoverScale" min="1.0" max="1.5" step="0.01">
-        <span class="value-display" id="val-hoverScale">1.15</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Active Click</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="activeScale" class="style-input" data-key="activeScale" min="0.5" max="1.0" step="0.01">
-        <span class="value-display" id="val-activeScale">0.9</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Icon Lift</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="iconLift" class="style-input" data-key="iconLift" min="0" max="12" step="1">
-        <span class="value-display" id="val-iconLift">3</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Hover Opacity</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="hoverOpacity" class="style-input" data-key="hoverOpacity" min="0.05" max="1"
-          step="0.01">
-        <span class="value-display" id="val-hoverOpacity">0.2</span>
-      </div>
-    </div>
+  <!-- Bottom bar -->
+  <div class="bottombar">
+    <span style="font-size:10px;color:var(--text-dim);">Changes are reflected live. Save to apply.</span>
+    <button id="save" class="btn btn-primary">Save Changes</button>
   </div>
 
-  <!-- Actions -->
-  <div class="section">
-    <span class="section-title">Actions & Links</span>
-    <div id="buttonList"></div>
-    <div class="grid-2">
-      <button id="addBtn" class="main-btn btn-secondary">+ Add Action</button>
-      <button id="addImageSearchBtn" class="main-btn btn-secondary">
-        + Image Search
-      </button>
-    </div>
-  </div>
-
-  <button id="save" class="main-btn btn-primary">Save Changes</button>
-  <div id="status">Settings Saved!</div>
   <script src="popup.js"></script>
 </body>
 

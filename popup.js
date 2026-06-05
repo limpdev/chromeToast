@@ -1,13 +1,27 @@
 // popup.js
 document.addEventListener('DOMContentLoaded', () => {
+
+  // ─── Elements ────────────────────────────────────────────────────────────────
+
   const elements = {
     buttonList: document.getElementById('buttonList'),
     addBtn: document.getElementById('addBtn'),
     addImageSearchBtn: document.getElementById('addImageSearchBtn'),
     saveBtn: document.getElementById('save'),
     status: document.getElementById('status'),
-    styleInputs: document.querySelectorAll('.style-input')
+    styleInputs: document.querySelectorAll('.style-input'),
+    previewCanvas: document.getElementById('previewCanvas'),
+    previewDims: document.getElementById('previewDims'),
+    statBtnCount: document.getElementById('statBtnCount'),
+    statIconPx: document.getElementById('statIconPx'),
+    statBgAlpha: document.getElementById('statBgAlpha'),
+    statRadius: document.getElementById('statRadius'),
   }
+
+  const previewCtx = elements.previewCanvas.getContext('2d', { alpha: true })
+
+  // ─── Defaults ─────────────────────────────────────────────────────────────────
+
   const defaultConfig = {
     style: {
       bgColor: '#1b1c1d',
@@ -55,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     ]
   }
-  // Image search engine presets for the "Add Image Search" quick-add menu
+
   const IMAGE_SEARCH_PRESETS = [
     {
       label: 'Google Lens',
@@ -82,26 +96,186 @@ document.addEventListener('DOMContentLoaded', () => {
       icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="M11 8v3h3m5 5l-3-3"/></g></svg>'
     }
   ]
+
+  // ─── State ────────────────────────────────────────────────────────────────────
+
   let currentConfig = null
-  chrome.storage.sync.get(['canvasToastConfig'], result => {
-    const saved = result.canvasToastConfig || {}
-    currentConfig = {
-      style: { ...defaultConfig.style, ...(saved.style || {}) },
-      buttons:
-        saved.buttons && saved.buttons.length > 0
-          ? saved.buttons
-          : defaultConfig.buttons
+
+  // Preview: loaded icon images keyed by button id
+  let previewIcons = {}
+  let previewRafId = null
+
+  // ─── Preview: Icon Loading ────────────────────────────────────────────────────
+
+  function svgToDataUri(svgStr) {
+    return 'data:image/svg+xml;charset=utf-8;base64,' +
+      btoa(unescape(encodeURIComponent(svgStr)))
+  }
+
+  function loadPreviewIcons() {
+    previewIcons = {}
+    const btns = currentConfig.buttons
+    if (btns.length === 0) {
+      schedulePreviewDraw()
+      return
     }
-    // Backfill contexts on any legacy buttons that are missing it
-    currentConfig.buttons = currentConfig.buttons.map(btn => ({
-      ...btn,
-      contexts:
-        btn.contexts && btn.contexts.length > 0 ? btn.contexts : ['text']
-    }))
-    renderUI()
+    let loaded = 0
+    btns.forEach(btn => {
+      const img = new Image()
+      let src = btn.icon || ''
+      if (src.trim().startsWith('<svg')) {
+        try { src = svgToDataUri(src) } catch { return }
+      }
+      img.onload = () => {
+        previewIcons[btn.id] = img
+        loaded++
+        if (loaded === btns.length) schedulePreviewDraw()
+      }
+      img.onerror = () => {
+        loaded++
+        if (loaded === btns.length) schedulePreviewDraw()
+      }
+      img.src = src
+    })
+  }
+
+  // ─── Preview: Draw ────────────────────────────────────────────────────────────
+
+  function hexToRgb(hex) {
+    const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+    return r ? {
+      r: parseInt(r[1], 16),
+      g: parseInt(r[2], 16),
+      b: parseInt(r[3], 16)
+    } : { r: 0, g: 0, b: 0 }
+  }
+
+  function roundRectPath(ctx, x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2
+    if (h < 2 * r) r = h / 2
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.arcTo(x + w, y, x + w, y + h, r)
+    ctx.arcTo(x + w, y + h, x, y + h, r)
+    ctx.arcTo(x, y + h, x, y, r)
+    ctx.arcTo(x, y, x + w, y, r)
+    ctx.closePath()
+  }
+
+  function schedulePreviewDraw() {
+    if (previewRafId) cancelAnimationFrame(previewRafId)
+    previewRafId = requestAnimationFrame(drawPreview)
+  }
+
+  function drawPreview() {
+    previewRafId = null
+    const { style, buttons } = currentConfig
+    const dpr = window.devicePixelRatio || 1
+
+    const btnSize = style.iconSize + style.iconPadding * 2
+    // Preview shows all buttons (context-agnostic — you see the full set)
+    const count = buttons.length
+    if (count === 0) {
+      elements.previewCanvas.style.width = '0px'
+      elements.previewCanvas.style.height = '0px'
+      updatePreviewStats(0, btnSize)
+      return
+    }
+
+    const totalW = style.padding * 2 + btnSize * count + style.buttonSpacing * (count - 1)
+    const totalH = style.padding * 2 + btnSize
+
+    // Size canvas
+    elements.previewCanvas.style.width = totalW + 'px'
+    elements.previewCanvas.style.height = totalH + 'px'
+    elements.previewCanvas.width = totalW * dpr
+    elements.previewCanvas.height = totalH * dpr
+    elements.previewCanvas.style.borderRadius = style.borderRadius + 'px'
+
+    const c = previewCtx
+    c.setTransform(1, 0, 0, 1, 0, 0)
+    c.scale(dpr, dpr)
+    c.clearRect(0, 0, totalW, totalH)
+
+    // Background fill (simulating the backdrop — we can't do real backdrop-filter in canvas)
+    const bg = hexToRgb(style.bgColor)
+    c.fillStyle = `rgba(${bg.r},${bg.g},${bg.b},${style.bgOpacity})`
+    c.fillRect(0, 0, totalW, totalH)
+
+    // Thin border to simulate the toast shell
+    c.strokeStyle = 'rgba(255,255,255,0.12)'
+    c.lineWidth = 0.5
+    c.strokeRect(0.25, 0.25, totalW - 0.5, totalH - 0.5)
+
+    // Highlight: simulate hovered state on button index 1 (if it exists)
+    const highlightIndex = Math.min(1, count - 1)
+
+    let x = style.padding
+    const y = style.padding
+
+    buttons.forEach((btn, i) => {
+      const isHovered = i === highlightIndex
+      const hoverVal = isHovered ? 1 : 0
+
+      if (isHovered) {
+        const targetScale = 1 + (style.hoverScale - 1)
+        const scaledSize = btnSize * targetScale
+        const offset = (btnSize - scaledSize) / 2
+
+        const hc = hexToRgb(style.hoverColor)
+        c.fillStyle = `rgba(${hc.r},${hc.g},${hc.b},${style.hoverOpacity})`
+        roundRectPath(c, x + offset, y + offset, scaledSize, scaledSize, style.borderRadius * 0.7)
+        c.fill()
+
+        const iconImg = previewIcons[btn.id]
+        if (iconImg) {
+          const scaledIconSize = style.iconSize * targetScale
+          const ix = x + (btnSize - scaledIconSize) / 2
+          const iy = y + (btnSize - scaledIconSize) / 2 - style.iconLift
+          c.filter = `brightness(1.3)`
+          c.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
+          c.filter = 'none'
+        }
+      } else {
+        const iconImg = previewIcons[btn.id]
+        if (iconImg) {
+          const ix = x + (btnSize - style.iconSize) / 2
+          const iy = y + (btnSize - style.iconSize) / 2
+          c.filter = 'brightness(0.75)'
+          c.drawImage(iconImg, ix, iy, style.iconSize, style.iconSize)
+          c.filter = 'none'
+        }
+      }
+
+      x += btnSize + style.buttonSpacing
+    })
+
+    updatePreviewStats(count, btnSize, totalW, totalH, style)
+  }
+
+  function updatePreviewStats(count, btnSize, w, h, style) {
+    elements.statBtnCount.textContent = count
+    if (style) {
+      elements.statIconPx.textContent = style.iconSize + 'px'
+      elements.statBgAlpha.textContent = style.bgOpacity
+      elements.statRadius.textContent = style.borderRadius + 'px'
+      elements.previewDims.textContent = `${Math.round(w || 0)} × ${Math.round(h || 0)}`
+    }
+  }
+
+  // ─── Section Collapse ─────────────────────────────────────────────────────────
+
+  document.querySelectorAll('.section-head').forEach(head => {
+    head.addEventListener('click', () => {
+      const sec = document.getElementById(head.dataset.section)
+      if (sec) sec.classList.toggle('open')
+    })
   })
-  // --- Render ---
-  function renderUI () {
+
+  // ─── Render UI ────────────────────────────────────────────────────────────────
+
+  function renderUI() {
+    // Populate style inputs
     elements.styleInputs.forEach(input => {
       const key = input.dataset.key
       if (currentConfig.style[key] !== undefined) {
@@ -110,155 +284,198 @@ document.addEventListener('DOMContentLoaded', () => {
         if (display) display.textContent = currentConfig.style[key]
       }
     })
+
+    // Render button list
     if (!elements.buttonList) return
     elements.buttonList.innerHTML = ''
     currentConfig.buttons.forEach((btn, index) => {
       elements.buttonList.appendChild(buildButtonItem(btn, index))
     })
+
     attachListeners()
+    loadPreviewIcons()
   }
-  function buildButtonItem (btn, index) {
+
+  // ─── Button Item Builder ──────────────────────────────────────────────────────
+
+  function buildButtonItem(btn, index) {
     const item = document.createElement('div')
     item.className = 'btn-item'
-    // Header
-    const header = document.createElement('div')
-    header.className = 'btn-header'
-    const headerLabel = document.createElement('span')
-    headerLabel.textContent = `Action ${index + 1}`
+
+    // Collapsible head
+    const head = document.createElement('div')
+    head.className = 'btn-item-head'
+
+    const label = document.createElement('span')
+    label.className = 'btn-item-label'
+    label.textContent = getButtonLabel(btn, index)
+
+    const controls = document.createElement('div')
+    controls.className = 'btn-item-controls'
+
     const removeBtn = document.createElement('span')
-    removeBtn.className = 'btn-remove'
+    removeBtn.className = 'btn-item-remove'
     removeBtn.dataset.index = index
-    removeBtn.textContent = '✖'
-    header.appendChild(headerLabel)
-    header.appendChild(removeBtn)
-    item.appendChild(header)
-    // Context checkboxes
-    item.appendChild(buildContextCheckboxes(btn, index))
+    removeBtn.title = 'Remove'
+    removeBtn.textContent = '✕'
+
+    controls.appendChild(removeBtn)
+    head.appendChild(label)
+    head.appendChild(controls)
+    item.appendChild(head)
+
+    // Body
+    const body = document.createElement('div')
+    body.className = 'btn-item-body'
+
+    // Context row
+    const ctxLabel = document.createElement('span')
+    ctxLabel.className = 'field-label'
+    ctxLabel.textContent = 'Context'
+    body.appendChild(ctxLabel)
+    body.appendChild(buildContextCheckboxes(btn, index))
+
     // Type select
+    const typeLabel = document.createElement('span')
+    typeLabel.className = 'field-label'
+    typeLabel.textContent = 'Type'
+    body.appendChild(typeLabel)
+
     const typeSelect = document.createElement('select')
     typeSelect.className = 'config-input type-select'
     typeSelect.dataset.field = 'type'
     typeSelect.dataset.index = index
-    ;[
-      { value: 'action', label: 'System Action' },
-      { value: 'link', label: 'Search / Link' },
-      { value: 'image-search', label: 'Image Search' }
-    ].forEach(({ value, label }) => {
-      const opt = document.createElement('option')
-      opt.value = value
-      opt.textContent = label
-      opt.selected = btn.type === value
-      typeSelect.appendChild(opt)
-    })
-    item.appendChild(typeSelect)
+      ;[
+        { value: 'action', label: 'System Action' },
+        { value: 'link', label: 'Search / Link' },
+        { value: 'image-search', label: 'Image Search' }
+      ].forEach(({ value, label: lbl }) => {
+        const opt = document.createElement('option')
+        opt.value = value
+        opt.textContent = lbl
+        opt.selected = btn.type === value
+        typeSelect.appendChild(opt)
+      })
+    body.appendChild(typeSelect)
+
     // Type-specific fields
     if (btn.type === 'action') {
-      item.appendChild(buildActionSelect(btn, index))
-    } else if (btn.type === 'link') {
-      item.appendChild(
-        buildUrlInput(btn, index, 'https://google.com/search?q=%s')
-      )
-    } else if (btn.type === 'image-search') {
-      item.appendChild(
-        buildUrlInput(btn, index, 'https://lens.google.com/uploadbyurl?url=%s')
-      )
-      const hint = document.createElement('span')
-      hint.className = 'helper-text'
-      hint.textContent = 'Use %s for the image URL'
-      item.appendChild(hint)
-    }
-    if (btn.type === 'action') {
-      item.appendChild(buildActionSelect(btn, index))
+      const actLabel = document.createElement('span')
+      actLabel.className = 'field-label'
+      actLabel.textContent = 'Action'
+      body.appendChild(actLabel)
+      body.appendChild(buildActionSelect(btn, index))
       if (btn.action === 'markdown') {
-        item.appendChild(buildMarkdownSourceSelect(btn, index))
+        body.appendChild(buildMarkdownSourceSelect(btn, index))
       }
+    } else if (btn.type === 'link') {
+      const urlLabel = document.createElement('span')
+      urlLabel.className = 'field-label'
+      urlLabel.textContent = 'URL (%s = selection)'
+      body.appendChild(urlLabel)
+      body.appendChild(buildUrlInput(btn, index, 'https://google.com/search?q=%s'))
+    } else if (btn.type === 'image-search') {
+      const urlLabel = document.createElement('span')
+      urlLabel.className = 'field-label'
+      urlLabel.textContent = 'URL (%s = image URL)'
+      body.appendChild(urlLabel)
+      body.appendChild(buildUrlInput(btn, index, 'https://lens.google.com/uploadbyurl?url=%s'))
     }
+
     // Icon
-    const iconHelper = document.createElement('span')
-    iconHelper.className = 'helper-text'
-    iconHelper.textContent = 'SVG Icon Code:'
-    item.appendChild(iconHelper)
+    const iconLabel = document.createElement('span')
+    iconLabel.className = 'field-label'
+    iconLabel.textContent = 'SVG Icon'
+    body.appendChild(iconLabel)
+
     const iconArea = document.createElement('textarea')
     iconArea.className = 'config-input'
     iconArea.dataset.field = 'icon'
     iconArea.dataset.index = index
     iconArea.textContent = btn.icon || ''
-    item.appendChild(iconArea)
+    body.appendChild(iconArea)
+
+    item.appendChild(body)
     return item
   }
-  function buildContextCheckboxes (btn, index) {
+
+  function getButtonLabel(btn, index) {
+    if (btn.type === 'action') return `#${index + 1} · ${btn.action || 'action'}`
+    if (btn.type === 'link') return `#${index + 1} · link`
+    if (btn.type === 'image-search') return `#${index + 1} · image-search`
+    return `#${index + 1}`
+  }
+
+  function buildContextCheckboxes(btn, index) {
     const wrapper = document.createElement('div')
-    wrapper.className = 'context-row'
-    const label = document.createElement('span')
-    label.className = 'helper-text'
-    label.textContent = 'Show in:'
-    wrapper.appendChild(label)
-    const checkboxWrapper = document.createElement('div')
-    checkboxWrapper.className = 'checkbox-group'
-    ;[
-      { value: 'text', label: 'Text' },
-      { value: 'image', label: 'Image' }
-    ].forEach(({ value, label: cbLabel }) => {
-      const cbLabel_el = document.createElement('label')
-      cbLabel_el.className = 'checkbox-label'
-      const cb = document.createElement('input')
-      cb.type = 'checkbox'
-      cb.className = 'context-checkbox'
-      cb.dataset.index = index
-      cb.dataset.context = value
-      cb.checked = (btn.contexts || ['text']).includes(value)
-      cbLabel_el.appendChild(cb)
-      cbLabel_el.appendChild(document.createTextNode(' ' + cbLabel))
-      checkboxWrapper.appendChild(cbLabel_el)
-    })
-    wrapper.appendChild(checkboxWrapper)
+    wrapper.className = 'checkbox-group'
+    wrapper.style.marginBottom = '4px'
+      ;[
+        { value: 'text', label: 'text' },
+        { value: 'image', label: 'image' }
+      ].forEach(({ value, label }) => {
+        const lbl = document.createElement('label')
+        lbl.className = 'cb-label'
+        const cb = document.createElement('input')
+        cb.type = 'checkbox'
+        cb.className = 'context-checkbox'
+        cb.dataset.index = index
+        cb.dataset.context = value
+        cb.checked = (btn.contexts || ['text']).includes(value)
+        lbl.appendChild(cb)
+        lbl.appendChild(document.createTextNode(' ' + label))
+        wrapper.appendChild(lbl)
+      })
     return wrapper
   }
-  function buildActionSelect (btn, index) {
+
+  function buildActionSelect(btn, index) {
     const sel = document.createElement('select')
     sel.className = 'config-input'
     sel.dataset.field = 'action'
     sel.dataset.index = index
-    ;[
-      { value: 'copy', label: 'Copy' },
-      { value: 'paste', label: 'Paste' },
-      { value: 'markdown', label: 'As Markdown' }
-    ].forEach(({ value, label }) => {
-      const opt = document.createElement('option')
-      opt.value = value
-      opt.textContent = label
-      opt.selected = btn.action === value
-      sel.appendChild(opt)
-    })
+      ;[
+        { value: 'copy', label: 'Copy' },
+        { value: 'paste', label: 'Paste' },
+        { value: 'markdown', label: 'As Markdown' }
+      ].forEach(({ value, label }) => {
+        const opt = document.createElement('option')
+        opt.value = value
+        opt.textContent = label
+        opt.selected = btn.action === value
+        sel.appendChild(opt)
+      })
     return sel
   }
-  // Helper function for Markdown conversion
-  function buildMarkdownSourceSelect (btn, index) {
+
+  function buildMarkdownSourceSelect(btn, index) {
     const label = document.createElement('span')
-    label.className = 'helper-text'
-    label.textContent = 'Markdown source:'
+    label.className = 'field-label'
+    label.textContent = 'Markdown Source'
+    label.style.marginTop = '4px'
 
     const sel = document.createElement('select')
     sel.className = 'config-input'
     sel.dataset.field = 'markdownSource'
     sel.dataset.index = index
-    ;[
-      { value: 'selection', label: 'Highlighted Text' },
-      { value: 'page', label: 'Entire Page' }
-    ].forEach(({ value, label: optLabel }) => {
-      const opt = document.createElement('option')
-      opt.value = value
-      opt.textContent = optLabel
-      opt.selected = (btn.markdownSource || 'selection') === value
-      sel.appendChild(opt)
-    })
+      ;[
+        { value: 'selection', label: 'Highlighted Text' },
+        { value: 'page', label: 'Entire Page' }
+      ].forEach(({ value, label: lbl }) => {
+        const opt = document.createElement('option')
+        opt.value = value
+        opt.textContent = lbl
+        opt.selected = (btn.markdownSource || 'selection') === value
+        sel.appendChild(opt)
+      })
 
-    const wrapper = document.createElement('div')
-    wrapper.appendChild(label)
-    wrapper.appendChild(sel)
-    return wrapper
+    const wrap = document.createElement('div')
+    wrap.appendChild(label)
+    wrap.appendChild(sel)
+    return wrap
   }
-  function buildUrlInput (btn, index, placeholder) {
+
+  function buildUrlInput(btn, index, placeholder) {
     const input = document.createElement('input')
     input.type = 'text'
     input.className = 'config-input'
@@ -268,14 +485,20 @@ document.addEventListener('DOMContentLoaded', () => {
     input.placeholder = placeholder
     return input
   }
-  // --- Listeners ---
-  function attachListeners () {
-    document.querySelectorAll('.btn-remove').forEach(el => {
+
+  // ─── Event Listeners ──────────────────────────────────────────────────────────
+
+  function attachListeners() {
+    // Remove buttons
+    document.querySelectorAll('.btn-item-remove').forEach(el => {
       el.addEventListener('click', e => {
+        e.stopPropagation()
         currentConfig.buttons.splice(Number(e.target.dataset.index), 1)
         renderUI()
       })
     })
+
+    // Context checkboxes
     document.querySelectorAll('.context-checkbox').forEach(cb => {
       cb.addEventListener('change', e => {
         const idx = Number(e.target.dataset.index)
@@ -287,15 +510,19 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           btn.contexts = btn.contexts.filter(c => c !== ctx)
         }
+        schedulePreviewDraw()
       })
     })
+
+    // Config inputs (type, action, url, icon, markdownSource)
     document.querySelectorAll('.config-input').forEach(el => {
       el.addEventListener('change', e => {
         const idx = Number(e.target.dataset.index)
         const field = e.target.dataset.field
-        if (field === undefined || idx === undefined || isNaN(idx)) return
+        if (field === undefined || isNaN(idx)) return
         const btn = currentConfig.buttons[idx]
         if (!btn) return
+
         if (field === 'type') {
           btn.type = e.target.value
           if (btn.type === 'link') {
@@ -303,25 +530,31 @@ document.addEventListener('DOMContentLoaded', () => {
             delete btn.action
           } else if (btn.type === 'image-search') {
             btn.url = 'https://lens.google.com/uploadbyurl?url=%s'
-            // Default new image-search buttons to image context
-            if (!btn.contexts || btn.contexts.length === 0) {
-              btn.contexts = ['image']
-            }
+            if (!btn.contexts || btn.contexts.length === 0) btn.contexts = ['image']
             delete btn.action
           } else if (btn.type === 'action') {
             btn.action = 'copy'
             delete btn.url
           }
           renderUI()
-        } else if (field === 'action') {
+          return
+        }
+
+        if (field === 'action') {
           btn.action = e.target.value
           if (btn.action !== 'markdown') delete btn.markdownSource
           renderUI()
-        } else {
-          btn[field] = e.target.value
+          return
         }
+
+        btn[field] = e.target.value
+
+        // Re-render preview on icon change (requires reload)
+        if (field === 'icon') loadPreviewIcons()
       })
     })
+
+    // Style inputs — live preview on every input event
     elements.styleInputs.forEach(input => {
       input.addEventListener('input', e => {
         const key = e.target.dataset.key
@@ -332,33 +565,33 @@ document.addEventListener('DOMContentLoaded', () => {
           if (display) display.textContent = val
         }
         currentConfig.style[key] = val
+        schedulePreviewDraw()
       })
     })
   }
-  // --- Add Buttons ---
+
+  // ─── Add Buttons ─────────────────────────────────────────────────────────────
+
   elements.addBtn.addEventListener('click', () => {
     currentConfig.buttons.push({
       id: 'btn-' + Date.now(),
       type: 'link',
       url: 'https://',
       contexts: ['text'],
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>'
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#d5d5d5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>'
     })
     renderUI()
   })
-  // Dropdown for image search presets
+
   elements.addImageSearchBtn.addEventListener('click', e => {
-    // Toggle a small preset picker beneath the button
     const existing = document.getElementById('preset-picker')
-    if (existing) {
-      existing.remove()
-      return
-    }
+    if (existing) { existing.remove(); return }
+
     const picker = document.createElement('div')
     picker.id = 'preset-picker'
     picker.className = 'preset-picker'
+
     IMAGE_SEARCH_PRESETS.forEach(preset => {
-      // Disable if already in the list
       const alreadyAdded = currentConfig.buttons.some(b => b.id === preset.id)
       const row = document.createElement('button')
       row.className = 'preset-row' + (alreadyAdded ? ' preset-row--added' : '')
@@ -377,29 +610,46 @@ document.addEventListener('DOMContentLoaded', () => {
       })
       picker.appendChild(row)
     })
-    // Insert after the button
+
     elements.addImageSearchBtn.insertAdjacentElement('afterend', picker)
   })
-  // Close preset picker on outside click
+
   document.addEventListener('click', e => {
     const picker = document.getElementById('preset-picker')
-    if (
-      picker &&
-      !picker.contains(e.target) &&
-      e.target !== elements.addImageSearchBtn
-    ) {
+    if (picker && !picker.contains(e.target) && e.target !== elements.addImageSearchBtn) {
       picker.remove()
     }
   })
-  // --- Save ---
+
+  // ─── Save ────────────────────────────────────────────────────────────────────
+
   elements.saveBtn.addEventListener('click', () => {
+    const origText = elements.saveBtn.textContent
     elements.saveBtn.textContent = 'Saving...'
+    elements.saveBtn.disabled = true
     chrome.storage.sync.set({ canvasToastConfig: currentConfig }, () => {
-      elements.saveBtn.textContent = 'Save Changes'
+      elements.saveBtn.textContent = origText
+      elements.saveBtn.disabled = false
       elements.status.style.opacity = '1'
-      setTimeout(() => {
-        elements.status.style.opacity = '0'
-      }, 2000)
+      setTimeout(() => { elements.status.style.opacity = '0' }, 2000)
     })
+  })
+
+  // ─── Bootstrap ───────────────────────────────────────────────────────────────
+
+  chrome.storage.sync.get(['canvasToastConfig'], result => {
+    const saved = result.canvasToastConfig || {}
+    currentConfig = {
+      style: { ...defaultConfig.style, ...(saved.style || {}) },
+      buttons: saved.buttons && saved.buttons.length > 0
+        ? saved.buttons
+        : defaultConfig.buttons
+    }
+    // Backfill missing contexts
+    currentConfig.buttons = currentConfig.buttons.map(btn => ({
+      ...btn,
+      contexts: btn.contexts && btn.contexts.length > 0 ? btn.contexts : ['text']
+    }))
+    renderUI()
   })
 })

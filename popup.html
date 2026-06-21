@@ -23,7 +23,8 @@
       --text-mid: #9ca3af;
       --danger: #f87171;
       --success: #34d399;
-      --mono: 'DM Mono', monospace;
+      --sans: 'Atkinson Hyperlegible', 'Aptos', sans-serif;
+      --mono: 'AtkynsonMono Nerd Font', 'Aptos Mono', monospace;
       --r: 6px;
     }
 
@@ -41,7 +42,7 @@
 
     body {
       width: 700px;
-      min-height: 560px;
+      height: 600px;
       background: var(--bg);
       color: var(--text);
       font-family: var(--mono);
@@ -49,6 +50,10 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+    }
+
+    #previewCanvas {
+      border: 1px solid #ffffff16;
     }
 
     /* ── Top bar ── */
@@ -93,12 +98,8 @@
 
     /* ── Main layout ── */
     .layout {
-      display: grid;
-      grid-template-columns: 1fr 220px;
       flex: 1;
-      /* changed from hidden to auto */
       overflow-y: auto;
-      /* moved from config-pane */
       scrollbar-width: thin;
       scrollbar-color: var(--surface2) transparent;
     }
@@ -119,8 +120,6 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
-      border-right: 1px solid var(--border);
-      /* REMOVED overflow-y and scrollbar styling from here */
     }
 
     .config-pane::-webkit-scrollbar {
@@ -135,29 +134,27 @@
     /* ── Preview pane ── */
     .preview-pane {
       display: flex;
-      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 8px 14px;
       background: var(--surface);
-
-      /* The magic combo: */
-      position: sticky;
-      top: 0;
-      height: 225px;
-      align-self: start;
-
+      border-top: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
 
     .preview-header {
-      padding: 10px 12px 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      padding-right: 14px;
+      border-right: 1px solid var(--border);
       font-size: 10px;
       letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--text-dim);
       font-weight: 500;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
     }
 
     .preview-header-dot {
@@ -182,7 +179,7 @@
     }
 
     .preview-stage {
-      flex: 1;
+      flex-shrink: 0;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -192,16 +189,16 @@
           rgba(255, 255, 255, 0.025) 19px, rgba(255, 255, 255, 0.025) 20px),
         repeating-linear-gradient(90deg, transparent, transparent 19px,
           rgba(255, 255, 255, 0.025) 19px, rgba(255, 255, 255, 0.025) 20px);
-      padding: 20px;
+      padding: 8px 12px;
+      border-radius: var(--r);
       position: relative;
       overflow: hidden;
     }
 
     .preview-canvas-wrap {
       display: flex;
-      flex-direction: column;
       align-items: center;
-      gap: 16px;
+      gap: 10px;
     }
 
     .preview-label {
@@ -215,15 +212,17 @@
       display: block;
       border-radius: 0;
       /* border-radius applied dynamically */
-      image-rendering: crisp-edges;
+      /* image-rendering: crisp-edges; */
+      image-rendering: -webkit-optimize-contrast;
     }
 
     .preview-footer {
-      padding: 10px 12px;
-      border-top: 1px solid var(--border);
+      flex: 1;
+      padding-left: 14px;
+      border-left: 1px solid var(--border);
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
       font-size: 9px;
       color: var(--text-dim);
     }
@@ -241,6 +240,7 @@
 
     /* ── Sections ── */
     .section {
+      font-family: var(--sans);
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--r);
@@ -253,9 +253,10 @@
       justify-content: space-between;
       padding: 7px 10px;
       cursor: pointer;
+      -webkit-user-select: none;
       user-select: none;
       border-bottom: 1px solid transparent;
-      transition: border-color 0.15s;
+      transition: border-color 125ms ease;
     }
 
     .section.open .section-head {
@@ -267,16 +268,16 @@
     }
 
     .section-title {
-      font-size: 10px;
-      font-weight: 500;
-      letter-spacing: 0.1em;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
       text-transform: uppercase;
       color: var(--text-mid);
     }
 
     .section-chevron {
       color: var(--text-dim);
-      font-size: 10px;
+      font-size: 12px;
       transition: transform 0.2s;
       line-height: 1;
     }
@@ -309,7 +310,7 @@
 
     .ctrl-label {
       color: var(--text-mid);
-      font-size: 11px;
+      font-size: 13px;
       flex-shrink: 0;
       min-width: 90px;
     }
@@ -372,7 +373,7 @@
 
     /* Value display */
     .val {
-      font-size: 10px;
+      font-size: 11px;
       color: var(--text-dim);
       width: 30px;
       text-align: right;
@@ -406,6 +407,7 @@
       padding: 6px 8px;
       cursor: pointer;
       background: var(--surface2);
+      -webkit-user-select: none;
       user-select: none;
     }
 
@@ -414,7 +416,7 @@
     }
 
     .btn-item-label {
-      font-size: 10px;
+      font-size: 13px;
       color: var(--text-mid);
       font-weight: 500;
     }
@@ -426,13 +428,13 @@
     }
 
     .btn-item-remove {
-      font-size: 10px;
+      font-size: 13px;
       color: var(--text-dim);
       cursor: pointer;
       padding: 2px 4px;
       border-radius: 3px;
       line-height: 1;
-      transition: color 0.1s, background 0.1s;
+      transition: color 125ms ease, background 125ms ease;
     }
 
     .btn-item-remove:hover {
@@ -483,7 +485,7 @@
     }
 
     .field-label {
-      font-size: 9px;
+      font-size: 10px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--text-dim);
@@ -799,39 +801,38 @@
 
     </div>
 
-    <!-- Preview pane -->
-    <div class="preview-pane">
-      <div class="preview-header">
-        <span>Live Preview</span>
-        <div class="preview-header-dot"></div>
-      </div>
-      <div class="preview-stage">
-        <div class="preview-canvas-wrap">
-          <span class="preview-label">hover state</span>
-          <canvas id="previewCanvas"></canvas>
-          <span class="preview-label" id="previewDims">— × —</span>
-        </div>
-      </div>
-      <div class="preview-footer">
-        <div class="preview-stat">
-          <span>buttons</span>
-          <span class="preview-stat-val" id="statBtnCount">0</span>
-        </div>
-        <div class="preview-stat">
-          <span>icon px</span>
-          <span class="preview-stat-val" id="statIconPx">—</span>
-        </div>
-        <div class="preview-stat">
-          <span>bg alpha</span>
-          <span class="preview-stat-val" id="statBgAlpha">—</span>
-        </div>
-        <div class="preview-stat">
-          <span>radius</span>
-          <span class="preview-stat-val" id="statRadius">—</span>
-        </div>
+  </div>
+
+  <!-- Preview pane (pinned above footer) -->
+  <div class="preview-pane">
+    <div class="preview-header">
+      <span>Live Preview</span>
+      <div class="preview-header-dot"></div>
+    </div>
+    <div class="preview-stage">
+      <div class="preview-canvas-wrap">
+        <canvas id="previewCanvas"></canvas>
+        <span class="preview-label" id="previewDims">— × —</span>
       </div>
     </div>
-
+    <div class="preview-footer">
+      <div class="preview-stat">
+        <span>buttons</span>
+        <span class="preview-stat-val" id="statBtnCount">0</span>
+      </div>
+      <div class="preview-stat">
+        <span>icon px</span>
+        <span class="preview-stat-val" id="statIconPx">—</span>
+      </div>
+      <div class="preview-stat">
+        <span>bg alpha</span>
+        <span class="preview-stat-val" id="statBgAlpha">—</span>
+      </div>
+      <div class="preview-stat">
+        <span>radius</span>
+        <span class="preview-stat-val" id="statRadius">—</span>
+      </div>
+    </div>
   </div>
 
   <!-- Bottom bar -->

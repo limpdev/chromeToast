@@ -50,16 +50,16 @@
     style: {
       bgColor: '#1b1c1d',
       bgOpacity: 0.75,
-      hoverColor: '#404040',
-      hoverOpacity: 0.2,
-      borderRadius: 13,
+      hoverColor: '#696969',
+      hoverOpacity: 0.33,
+      borderRadius: 7,
       padding: 6,
-      iconSize: 18,
+      iconSize: 16,
       iconPadding: 5,
-      buttonSpacing: 4,
+      buttonSpacing: 6,
       hoverScale: 1.15,
       activeScale: 0.9,
-      iconLift: 3
+      iconLift: 2
     },
     buttons: [
       {

@@ -26,16 +26,16 @@ document.addEventListener('DOMContentLoaded', () => {
     style: {
       bgColor: '#1b1c1d',
       bgOpacity: 0.75,
-      hoverColor: '#404040',
-      hoverOpacity: 0.2,
-      borderRadius: 13,
-      iconSize: 18,
+      hoverColor: '#696969',
+      hoverOpacity: 0.33,
+      borderRadius: 7,
+      iconSize: 16,
       iconPadding: 5,
-      buttonSpacing: 4,
-      padding: 6,
+      buttonSpacing: 6,
+      padding: 3,
       hoverScale: 1.15,
       activeScale: 0.9,
-      iconLift: 3
+      iconLift: 2
     },
     buttons: [
       {
@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
         action: 'markdown',
         markdownSource: 'selection',
         contexts: ['text'],
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="#d5d5d5" d="M3 3h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1m4 12.5v-4l2 2l2-2v4h2v-7h-2l-2 2l-2-2H5v7zm11-3v-4h-2v4h-2l3 3l3-3z"/></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 32 32"><path d="M0 0h32v32H0z" fill="none"/><path fill="#d5d5d5" d="M2.875 6C1.32 6 0 7.254 0 8.813v14.374C0 24.747 1.32 26 2.875 26h26.25C30.68 26 32 24.746 32 23.187V8.813C32 7.255 30.68 6 29.125 6zm0 2h26.25c.516 0 .875.383.875.813v14.374c0 .43-.36.813-.875.813H2.875C2.359 24 2 23.617 2 23.187V8.813c0-.43.36-.812.875-.812zM5 11v10h3v-6.656l3 3.969l3-3.97V21h3V11h-3l-3 4l-3-4zm17 0v5h-3l4.5 5l4.5-5h-3v-5z"/></svg>'
       },
       {
         id: 'google-text',

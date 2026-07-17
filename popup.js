@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
       iconSize: 16,
       iconPadding: 5,
       buttonSpacing: 6,
-      padding: 3,
+      padding: 6,
       hoverScale: 1.15,
       activeScale: 0.9,
       iconLift: 2

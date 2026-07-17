@@ -1,3 +1,6 @@
+import TurndownService from 'turndown'
+import { gfm } from 'turndown-plugin-gfm'
+
 // content.js - Toast Selection Popup (Hybrid DOM + Canvas)
 ; (function () {
   'use strict'
@@ -9,6 +12,7 @@
   let selectionRange = null
   let isVisible = false
   let animationId = null
+  let selectionRafId = null  // fix mouse click handling
   let buttons = []
   let loadedIcons = {}
   let iconsReady = false
@@ -45,6 +49,27 @@
       spring.vel = 0
     }
   }
+
+  const turndownService = new TurndownService({
+    headingStyle: 'atx',
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    fence: '```',
+    hr: '---',
+    linkStyle: 'inlined'
+  })
+  turndownService.use(gfm)
+  turndownService.addRule('removeHidden', {
+    filter: el =>
+      el.style &&
+      (el.style.display === 'none' || el.style.visibility === 'hidden'),
+    replacement: () => ''
+  })
+  turndownService.addRule('lineBreak', {
+    filter: 'br',
+    replacement: () => '  \n'
+  })
+
   // --- Default Configuration ---
   const defaultConfig = {
     style: {
@@ -235,8 +260,10 @@
   // Replace handleImageClick with these three functions:
 
   function handleImageMouseOver(e) {
+    if (!chrome.runtime?.id) return
     clearTimeout(hoverTimeout)
     hoverTimeout = setTimeout(() => {
+      if (!chrome.runtime?.id) return
       const target = e.target
       if (!(target instanceof HTMLImageElement)) return
       if (hostEl && hostEl.contains(target)) return
@@ -245,6 +272,7 @@
   }
 
   function handleImageMouseOut(e) {
+    if (!chrome.runtime?.id) return
     const target = e.target
     if (!(target instanceof HTMLImageElement)) return
     if (hostEl && hostEl.contains(e.relatedTarget)) return
@@ -252,9 +280,11 @@
   }
 
   function handleMouseUp(e) {
+    if (!chrome.runtime?.id) return
     if (hostEl && hostEl.contains(e.target)) return
     if (selectionRafId) cancelAnimationFrame(selectionRafId)
     selectionRafId = requestAnimationFrame(() => {
+      if (!chrome.runtime?.id) return
       selectionRafId = null
       const sel = window.getSelection()
       if (!sel || sel.rangeCount === 0) return
@@ -264,7 +294,7 @@
         currentSelection = text
         imageContext = { src: null, resolvedUrl: null, isAccessible: true }
         try {
-          selectionRange = sel.getRangeAt(0)
+          selectionRange = sel.getRangeAt(0).cloneRange()
           const rect = selectionRange.getBoundingClientRect()
           if (rect.width === 0 && rect.height === 0) return
           showToast(rect)
@@ -278,6 +308,7 @@
   }
 
   function handleMouseDown(e) {
+    if (!chrome.runtime?.id) return
     if (isVisible && hostEl && !hostEl.contains(e.target)) {
       hideToast()
     }
@@ -302,6 +333,7 @@
   }
 
   function handleKeyDown(e) {
+    if (!chrome.runtime?.id) return
     // Only Control, not Ctrl+C / Ctrl+V / etc.
     if (e.key !== 'Control' || e.ctrlKey === false) return
     if (!hoveredImage) return
@@ -319,35 +351,9 @@
     const rect = hoveredImage.getBoundingClientRect()
     showToast(rect)
   }
-  // --- Selection Handlers ---
-  let selectionRafId = null
-  function handleMouseUp(e) {
-    if (hostEl && hostEl.contains(e.target)) return
-    if (selectionRafId) cancelAnimationFrame(selectionRafId)
-    selectionRafId = requestAnimationFrame(() => {
-      selectionRafId = null
-      const sel = window.getSelection()
-      if (!sel || sel.rangeCount === 0) return
-      const text = sel.toString().trim()
-      if (text.length > 0) {
-        currentContext = 'text'
-        currentSelection = text
-        imageContext = { src: null, resolvedUrl: null, isAccessible: true }
-        try {
-          selectionRange = sel.getRangeAt(0)
-          const rect = selectionRange.getBoundingClientRect()
-          if (rect.width === 0 && rect.height === 0) return
-          showToast(rect)
-        } catch (err) {
-          console.error('[Toast] Range error', err)
-        }
-      } else {
-        if (!isMouseDown) hideToast()
-      }
-    })
-  }
 
   function handleScroll() {
+    if (!chrome.runtime?.id) return
     if (isVisible) hideToast()
   }
   // --- Toast Lifecycle ---
@@ -608,6 +614,7 @@
     if (animState.hoveredButtonIndex !== -1) isMouseDown = true
   }
   async function handleCanvasUp() {
+    if (!chrome.runtime?.id) return
     isMouseDown = false
     wake()
     if (animState.hoveredButtonIndex === -1) return
@@ -652,6 +659,7 @@
   }
 
   async function handleMarkdownCopy(btn) {
+    if (!chrome.runtime?.id) return
     const source = btn.markdownSource || 'selection'
     let htmlPayload = ''
 
@@ -674,11 +682,12 @@
       htmlPayload = wrapper.innerHTML
     }
 
-    chrome.runtime.sendMessage({ type: 'MARKDOWN', html: htmlPayload }, res => {
-      if (res && res.markdown) {
-        navigator.clipboard.writeText(res.markdown).catch(console.error)
-      }
-    })
+    try {
+      const markdown = turndownService.turndown(htmlPayload)
+      await navigator.clipboard.writeText(markdown)
+    } catch (err) {
+      console.error('[Toast] Markdown copy failed:', err)
+    }
   }
   // --- Action Handlers ---
   function handleImageSearch(urlTemplate) {

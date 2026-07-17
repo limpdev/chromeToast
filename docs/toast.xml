@@ -1,4 +1,5 @@
-This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+The content has been processed where empty lines have been removed.
 
 <file_summary>
 This section contains a summary of this file.
@@ -33,14 +34,19 @@ The content is organized as follows:
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
 - Only files matching these patterns are included: **/*.json, **/*.js, **/*.css, **/*.html
+- Files matching these patterns are excluded: node_modules, **/node_modules, **/.venv/**, **/venv/**, **/yarn.lock, **/*.md
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
+- Empty lines have been removed from all files
+- Long base64 data strings (e.g., data:image/png;base64,...) have been truncated to reduce token count
 - Files are sorted by Git change count (files with more changes are at the bottom)
 </notes>
 
 </file_summary>
 
 <directory_structure>
+assets/
+docs/
 background.js
 build.js
 content.js
@@ -54,32 +60,8 @@ popup.js
 This section contains the contents of the repository's files.
 
 <file path="background.js">
-import TurndownService from 'turndown'
-import { gfm } from 'turndown-plugin-gfm'
-
-const turndownService = new TurndownService({
-    headingStyle: 'atx',
-    bulletListMarker: '-',
-    codeBlockStyle: 'fenced',
-    fence: '```',
-    hr: '---',
-    linkStyle: 'inlined'
-})
-turndownService.use(gfm)
-turndownService.addRule('removeHidden', {
-    filter: el => el.style && (el.style.display === 'none' || el.style.visibility === 'hidden'),
-    replacement: () => ''
-})
-turndownService.addRule('lineBreak', {
-    filter: 'br',
-    replacement: () => '  \n'
-})
-
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
-    if (req.type === 'MARKDOWN') {
-        sendResponse({ markdown: turndownService.turndown(req.html) })
-    }
-    else if (req.type === 'WEBHOOK') {
+    if (req.type === 'WEBHOOK') {
         fetch(req.url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -94,20 +76,16 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
 <file path="build.js">
 #!/usr/bin/env node
 'use strict'
-
 const esbuild = require('esbuild')
 const fs = require('fs')
 const path = require('path')
 const archiver = require('archiver')
 const http = require('http')
-
 const isDev = process.argv.includes('--watch') || process.argv.includes('--dev')
 const distDir = 'dist'
 const iconsDir = path.join(distDir, 'assets')
 const zipName = 'extension.zip'
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
 function copyAssets() {
   if (!fs.existsSync(iconsDir)) fs.mkdirSync(iconsDir, { recursive: true })
     ;['icon16.png', 'icon48.png', 'icon128.png'].forEach(icon => {
@@ -121,11 +99,9 @@ function copyAssets() {
       }
     })
 }
-
 function copyManifest() {
   fs.copyFileSync('manifest.json', path.join(distDir, 'manifest.json'))
 }
-
 function minifyAndCopyHtml() {
   const src = fs.readFileSync('popup.html', 'utf8')
   const out = src
@@ -134,18 +110,14 @@ function minifyAndCopyHtml() {
     .replace(/<!--.*?-->/gs, '')
   fs.writeFileSync(path.join(distDir, 'popup.html'), out)
 }
-
 function prepareDist() {
   if (fs.existsSync(distDir)) fs.rmSync(distDir, { recursive: true })
   fs.mkdirSync(distDir)
   fs.mkdirSync(iconsDir)
 }
-
 // ─── Dev Mode ───────────────────────────────────────────────────────────────
-
 const SSE_PORT = 8099
 let sseClients = []
-
 function startSseServer() {
   const server = http.createServer((req, res) => {
     if (req.url !== '/events') {
@@ -169,12 +141,10 @@ function startSseServer() {
     console.log(`[dev] SSE server listening on http://localhost:${SSE_PORT}/events`)
   })
 }
-
 function pushReload(reason) {
   console.log(`[dev] Reload triggered: ${reason}`)
   sseClients.forEach(res => res.write('data: reload\n\n'))
 }
-
 const reloadShim = `
 ;(function devReloadShim() {
   const url = 'http://localhost:${SSE_PORT}/events'
@@ -191,46 +161,38 @@ const reloadShim = `
   connect()
 })()
 `.trim()
-
 function writeReloadShim() {
   fs.writeFileSync(path.join(distDir, 'reload-shim.js'), reloadShim)
 }
-
 function writeDevManifest() {
   const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'))
-
   if (manifest.content_scripts && manifest.content_scripts.length > 0) {
     const entry = manifest.content_scripts[0]
     if (!entry.js.includes('reload-shim.js')) {
       entry.js.push('reload-shim.js')
     }
   }
-
   if (!manifest.host_permissions) manifest.host_permissions = []
   const shimOrigin = `http://localhost:${SSE_PORT}/`
   if (!manifest.host_permissions.includes(shimOrigin)) {
     manifest.host_permissions.push(shimOrigin)
   }
-
   fs.writeFileSync(
     path.join(distDir, 'manifest.json'),
     JSON.stringify(manifest, null, 2)
   )
 }
-
 function watchStaticFiles() {
   fs.watch('manifest.json', () => {
     console.log('[dev] manifest.json changed')
     writeDevManifest()
     pushReload('manifest.json')
   })
-
   fs.watch('popup.html', () => {
     console.log('[dev] popup.html changed')
     minifyAndCopyHtml()
     pushReload('popup.html')
   })
-
   if (fs.existsSync('assets')) {
     fs.watch('assets', () => {
       copyAssets()
@@ -238,7 +200,6 @@ function watchStaticFiles() {
     })
   }
 }
-
 async function runDev() {
   console.log('[dev] Starting dev build...')
   prepareDist()
@@ -246,9 +207,7 @@ async function runDev() {
   minifyAndCopyHtml()
   writeReloadShim()
   writeDevManifest()
-
   startSseServer()
-
   const onRebuild = (label) => ({
     name: 'notify-reload',
     setup(build) {
@@ -261,7 +220,6 @@ async function runDev() {
       })
     }
   })
-
   const contentCtx = await esbuild.context({
     entryPoints: ['content.js'],
     bundle: true,
@@ -272,7 +230,6 @@ async function runDev() {
     format: 'iife',
     plugins: [onRebuild('content.js')]
   })
-
   const popupCtx = await esbuild.context({
     entryPoints: ['popup.js'],
     bundle: false,
@@ -282,7 +239,6 @@ async function runDev() {
     target: 'chrome100',
     plugins: [onRebuild('popup.js')]
   })
-
   const bgCtx = await esbuild.context({
     entryPoints: ['background.js'],
     bundle: true,
@@ -293,16 +249,12 @@ async function runDev() {
     format: 'esm',
     plugins: [onRebuild('background.js')]
   })
-
   await Promise.all([contentCtx.watch(), popupCtx.watch(), bgCtx.watch()])
   watchStaticFiles()
-
   console.log('[dev] Watching for changes. Load dist/ as an unpacked extension.')
   console.log('[dev] Press Ctrl+C to stop.\n')
 }
-
 // ─── Production Build ────────────────────────────────────────────────────────
-
 async function runBuild() {
   console.log('Starting build...')
   if (fs.existsSync(zipName)) fs.rmSync(zipName)
@@ -310,7 +262,6 @@ async function runBuild() {
   copyAssets()
   minifyAndCopyHtml()
   copyManifest()
-
   esbuild.buildSync({
     entryPoints: ['content.js'],
     bundle: true,
@@ -319,14 +270,12 @@ async function runBuild() {
     target: 'chrome100',
     format: 'iife'
   })
-
   esbuild.buildSync({
     entryPoints: ['popup.js'],
     minify: true,
     outfile: path.join(distDir, 'popup.js'),
     target: 'chrome100'
   })
-
   esbuild.buildSync({
     entryPoints: ['background.js'],
     bundle: true,
@@ -335,9 +284,7 @@ async function runBuild() {
     target: 'chrome100',
     format: 'esm'
   })
-
   console.log('Compilation complete.')
-
   console.log('Packaging for Web Store...')
   const output = fs.createWriteStream(zipName)
   const archive = archiver('zip', { zlib: { level: 9 } })
@@ -350,9 +297,7 @@ async function runBuild() {
   archive.directory(distDir, false)
   archive.finalize()
 }
-
 // ─── Entry ───────────────────────────────────────────────────────────────────
-
 if (isDev) {
   runDev().catch(err => { console.error(err); process.exit(1) })
 } else {
@@ -360,431 +305,10 @@ if (isDev) {
 }
 </file>
 
-<file path="popup.html">
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Toast Preferences</title>
-  <style>
-    :root {
-      --bg-color: #0f172a;
-      --card-bg: #1e293b;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
-      --text: #f1f5f9;
-      --text-muted: #94a3b8;
-      --border: #334155;
-      --danger: #ef4444;
-    }
-
-    body {
-      width: 360px;
-      margin: 0;
-      padding: 16px;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: var(--bg-color);
-      color: var(--text);
-    }
-
-    h2 {
-      margin: 0 0 16px 0;
-      font-size: 18px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    h2 svg {
-      width: 20px;
-      height: 20px;
-      color: var(--accent);
-    }
-
-    .section {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 16px;
-    }
-
-    .section-title {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
-      font-weight: 700;
-      margin-bottom: 12px;
-      display: block;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 4px;
-    }
-
-    .control-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-      font-size: 13px;
-    }
-
-    .control-row:last-child {
-      margin-bottom: 0;
-    }
-
-    .control-col {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 13px;
-    }
-
-    input[type="color"] {
-      width: 28px;
-      height: 28px;
-      border: none;
-      cursor: pointer;
-      background: none;
-      border-radius: 4px;
-      appearance: none;
-      -webkit-appearance: none;
-    }
-
-    input[type="range"] {
-      width: 110px;
-      height: 4px;
-      border-radius: 2px;
-      appearance: none;
-      -webkit-appearance: none;
-      background: var(--border);
-    }
-
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 12px;
-      height: 12px;
-      background: var(--accent);
-      border-radius: 50%;
-      cursor: pointer;
-      margin-top: -4px;
-    }
-
-    input[type="range"]::-webkit-slider-runnable-track {
-      height: 4px;
-      background: var(--border);
-      border-radius: 2px;
-    }
-
-    .value-display {
-      font-family: monospace;
-      font-size: 11px;
-      color: var(--text-muted);
-      width: 34px;
-      text-align: right;
-    }
-
-    /* Button List Styling */
-    .btn-item {
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 10px;
-      margin-bottom: 8px;
-      transition: border-color 0.2s;
-    }
-
-    .btn-item:hover {
-      border-color: var(--accent);
-    }
-
-    .btn-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .btn-remove {
-      color: var(--text-muted);
-      cursor: pointer;
-      padding: 2px;
-    }
-
-    .btn-remove:hover {
-      color: var(--danger);
-    }
-
-    input[type="text"],
-    textarea,
-    select {
-      width: 100%;
-      box-sizing: border-box;
-      background: var(--bg-color);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      margin-bottom: 8px;
-    }
-
-    input[type="text"]:focus,
-    textarea:focus,
-    select:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-
-    textarea {
-      height: 50px;
-      font-family: monospace;
-      resize: vertical;
-    }
-
-    .main-btn {
-      width: 100%;
-      padding: 10px;
-      border: none;
-      border-radius: 6px;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 13px;
-      transition: background 0.2s;
-    }
-
-    .btn-primary {
-      background: var(--accent);
-      color: white;
-    }
-
-    .btn-primary:hover {
-      background: var(--accent-hover);
-    }
-
-    .btn-secondary {
-      background: var(--border);
-      color: var(--text);
-      margin-top: 8px;
-    }
-
-    .btn-secondary:hover {
-      background: #475569;
-    }
-
-    #status {
-      text-align: center;
-      font-size: 12px;
-      margin-top: 10px;
-      height: 16px;
-      color: #10b981;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    .helper-text {
-      font-size: 10px;
-      color: var(--text-muted);
-      margin-bottom: 4px;
-      display: block;
-    }
-
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    .context-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-
-    .checkbox-group {
-      display: flex;
-      gap: 12px;
-    }
-
-    .checkbox-label {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 12px;
-      cursor: pointer;
-      color: var(--text-muted);
-    }
-
-    .checkbox-label:hover {
-      color: var(--text);
-    }
-
-    input[type="checkbox"] {
-      accent-color: var(--accent);
-      cursor: pointer;
-    }
-
-    .preset-picker {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-top: 4px;
-      margin-bottom: 8px;
-      overflow: hidden;
-    }
-
-    .preset-row {
-      display: block;
-      width: 100%;
-      padding: 8px 12px;
-      background: none;
-      border: none;
-      color: var(--text);
-      font-size: 12px;
-      text-align: left;
-      cursor: pointer;
-    }
-
-    .preset-row:hover:not(:disabled) {
-      background: var(--border);
-    }
-
-    .preset-row--added {
-      color: var(--text-muted);
-      cursor: default;
-    }
-  </style>
-</head>
-
-<body>
-  <h4 style="letter-spacing: 0.05em;justify-self: center;">
-    Where The <s style="font-style: italic;opacity: .3;"> Sausage </s><strong><u> Toast </u></strong> Is Made
-  </h4>
-
-  <!-- Visual Style -->
-  <div class="section">
-    <span class="section-title">Visual Style</span>
-    <div class="control-row">
-      <span>Background</span>
-      <input type="color" id="bgColor" class="style-input" data-key="bgColor">
-    </div>
-    <div class="control-row">
-      <span>Accent Color</span>
-      <input type="color" id="hoverColor" class="style-input" data-key="hoverColor">
-    </div>
-    <div class="control-row">
-      <span>Opacity</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="bgOpacity" class="style-input" data-key="bgOpacity" min="0.1" max="1" step="0.01">
-        <span class="value-display" id="val-bgOpacity">0.75</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Border Radius</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="borderRadius" class="style-input" data-key="borderRadius" min="0" max="24" step="1">
-        <span class="value-display" id="val-borderRadius">13</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Layout & Spacing -->
-  <div class="section">
-    <span class="section-title">Layout & Spacing</span>
-    <div class="control-row">
-      <span>Icon Size</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="iconSize" class="style-input" data-key="iconSize" min="10" max="32" step="1">
-        <span class="value-display" id="val-iconSize">18</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Icon Padding</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="iconPadding" class="style-input" data-key="iconPadding" min="2" max="16" step="1">
-        <span class="value-display" id="val-iconPadding">5</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Button Spacing</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="buttonSpacing" class="style-input" data-key="buttonSpacing" min="0" max="16" step="1">
-        <span class="value-display" id="val-buttonSpacing">4</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Wall Padding</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="padding" class="style-input" data-key="padding" min="2" max="20" step="1">
-        <span class="value-display" id="val-padding">6</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Animation & Interaction -->
-  <div class="section">
-    <span class="section-title">Animation & Interaction</span>
-    <div class="control-row">
-      <span>Hover Scale</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="hoverScale" class="style-input" data-key="hoverScale" min="1.0" max="1.5" step="0.01">
-        <span class="value-display" id="val-hoverScale">1.15</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Active Click</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="activeScale" class="style-input" data-key="activeScale" min="0.5" max="1.0" step="0.01">
-        <span class="value-display" id="val-activeScale">0.9</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Icon Lift</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="iconLift" class="style-input" data-key="iconLift" min="0" max="12" step="1">
-        <span class="value-display" id="val-iconLift">3</span>
-      </div>
-    </div>
-    <div class="control-row">
-      <span>Hover Opacity</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="range" id="hoverOpacity" class="style-input" data-key="hoverOpacity" min="0.05" max="1"
-          step="0.01">
-        <span class="value-display" id="val-hoverOpacity">0.2</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Actions -->
-  <div class="section">
-    <span class="section-title">Actions & Links</span>
-    <div id="buttonList"></div>
-    <div class="grid-2">
-      <button id="addBtn" class="main-btn btn-secondary">+ Add Action</button>
-      <button id="addImageSearchBtn" class="main-btn btn-secondary">
-        + Image Search
-      </button>
-    </div>
-  </div>
-
-  <button id="save" class="main-btn btn-primary">Save Changes</button>
-  <div id="status">Settings Saved!</div>
-  <script src="popup.js"></script>
-</body>
-
-</html>
-</file>
-
 <file path="package.json">
 {
   "name": "toast-extension",
-  "version": "3.0.0",
+  "version": "4.5.0",
   "description": "Customizable floating action menu for text selections.",
   "scripts": {
     "build": "node build.js",
@@ -802,31 +326,791 @@ if (isDev) {
 }
 </file>
 
+<file path="popup.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Toast Preferences</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0b0d;
+      --surface: #111316;
+      --surface2: #191c21;
+      --border: rgba(255, 255, 255, 0.07);
+      --border-hi: rgba(255, 255, 255, 0.14);
+      --accent: #4f8ef7;
+      --accent-lo: rgba(79, 142, 247, 0.12);
+      --accent-mid: rgba(79, 142, 247, 0.22);
+      --text: #e8eaed;
+      --text-dim: #6b7280;
+      --text-mid: #9ca3af;
+      --danger: #f87171;
+      --success: #34d399;
+      --sans: 'Atkinson Hyperlegible', 'Aptos', sans-serif;
+      --mono: 'AtkynsonMono Nerd Font', 'Aptos Mono', monospace;
+      --r: 6px;
+    }
+    ::-webkit-scrollbar {
+      display: none;
+    }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      width: 700px;
+      height: 600px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #previewCanvas {
+      border: 1px solid #ffffff16;
+    }
+    /* ── Top bar ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    .topbar-brand {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+    }
+    .topbar-brand strong {
+      color: var(--text);
+      font-style: italic;
+      text-decoration: line-through;
+      opacity: .35;
+      margin: 0 5px;
+    }
+    .topbar-brand em {
+      color: var(--text);
+      font-style: normal;
+      text-decoration: double;
+      font-weight: 500;
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    /* ── Main layout ── */
+    .layout {
+      flex: 1;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--surface2) transparent;
+    }
+    /* Moved scrollbar styling to apply to .layout */
+    .layout::-webkit-scrollbar {
+      width: 4px;
+    }
+    .layout::-webkit-scrollbar-thumb {
+      background: var(--surface2);
+      border-radius: 2px;
+    }
+    /* ── Config pane ── */
+    .config-pane {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .config-pane::-webkit-scrollbar {
+      width: 4px;
+    }
+    .config-pane::-webkit-scrollbar-thumb {
+      background: var(--surface2);
+      border-radius: 2px;
+    }
+    /* ── Preview pane ── */
+    .preview-pane {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 8px 14px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .preview-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      padding-right: 14px;
+      border-right: 1px solid var(--border);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+    .preview-header-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.3;
+      }
+    }
+    .preview-stage {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(ellipse 60% 50% at 50% 50%, rgba(79, 142, 247, 0.04) 0%, transparent 70%),
+        repeating-linear-gradient(0deg, transparent, transparent 19px,
+          rgba(255, 255, 255, 0.025) 19px, rgba(255, 255, 255, 0.025) 20px),
+        repeating-linear-gradient(90deg, transparent, transparent 19px,
+          rgba(255, 255, 255, 0.025) 19px, rgba(255, 255, 255, 0.025) 20px);
+      padding: 8px 12px;
+      border-radius: var(--r);
+      position: relative;
+      overflow: hidden;
+    }
+    .preview-canvas-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .preview-label {
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+    #previewCanvas {
+      display: block;
+      border-radius: 0;
+      /* border-radius applied dynamically */
+      /* image-rendering: crisp-edges; */
+      image-rendering: -webkit-optimize-contrast;
+    }
+    .preview-footer {
+      flex: 1;
+      padding-left: 14px;
+      border-left: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      font-size: 9px;
+      color: var(--text-dim);
+    }
+    .preview-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .preview-stat-val {
+      color: var(--text-mid);
+      font-size: 10px;
+    }
+    /* ── Sections ── */
+    .section {
+      font-family: var(--sans);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 10px;
+      cursor: pointer;
+      -webkit-user-select: none;
+      user-select: none;
+      border-bottom: 1px solid transparent;
+      transition: border-color 125ms ease;
+    }
+    .section.open .section-head {
+      border-bottom-color: var(--border);
+    }
+    .section-head:hover {
+      background: var(--surface2);
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+    }
+    .section-chevron {
+      color: var(--text-dim);
+      font-size: 12px;
+      transition: transform 0.2s;
+      line-height: 1;
+    }
+    .section.open .section-chevron {
+      transform: rotate(90deg);
+    }
+    .section-body {
+      display: none;
+      padding: 10px;
+    }
+    .section.open .section-body {
+      display: block;
+    }
+    /* ── Control rows ── */
+    .ctrl {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+      gap: 8px;
+    }
+    .ctrl+.ctrl {
+      border-top: 1px solid var(--border);
+    }
+    .ctrl-label {
+      color: var(--text-mid);
+      font-size: 13px;
+      flex-shrink: 0;
+      min-width: 90px;
+    }
+    .ctrl-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    /* Range inputs */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100px;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--surface2);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 1.5px solid var(--bg);
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.25);
+      box-shadow: 0 0 0 3px var(--accent-lo);
+    }
+    /* Color inputs */
+    input[type="color"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      border: 1px solid var(--border-hi);
+      border-radius: 4px;
+      background: none;
+      cursor: pointer;
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 2px;
+    }
+    input[type="color"]::-webkit-color-swatch {
+      border: none;
+      border-radius: 2px;
+    }
+    /* Value display */
+    .val {
+      font-size: 11px;
+      color: var(--text-dim);
+      width: 30px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    /* ── Buttons section ── */
+    #buttonList {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .btn-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    .btn-item:hover {
+      border-color: var(--border-hi);
+    }
+    .btn-item-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      cursor: pointer;
+      background: var(--surface2);
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .btn-item-head:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .btn-item-label {
+      font-size: 13px;
+      color: var(--text-mid);
+      font-weight: 500;
+    }
+    .btn-item-controls {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .btn-item-remove {
+      font-size: 13px;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 3px;
+      line-height: 1;
+      transition: color 125ms ease, background 125ms ease;
+    }
+    .btn-item-remove:hover {
+      color: var(--danger);
+      background: rgba(248, 113, 113, 0.1);
+    }
+    .btn-item-body {
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    input[type="text"],
+    textarea,
+    select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: var(--mono);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--accent);
+    }
+    textarea {
+      height: 44px;
+      resize: vertical;
+      line-height: 1.4;
+    }
+    select {
+      cursor: pointer;
+    }
+    select option {
+      background: #1a1d23;
+    }
+    .field-label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 2px;
+      display: block;
+    }
+    .checkbox-group {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .cb-label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      color: var(--text-mid);
+      cursor: pointer;
+    }
+    .cb-label:hover {
+      color: var(--text);
+    }
+    input[type="checkbox"] {
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    /* ── Action buttons ── */
+    .add-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .btn {
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      font-family: var(--mono);
+      font-size: 11px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      font-weight: 400;
+      text-align: center;
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-mid);
+    }
+    .btn-ghost:hover {
+      background: var(--surface2);
+      color: var(--text);
+      border-color: var(--border-hi);
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: transparent;
+      font-weight: 500;
+    }
+    .btn-primary:hover {
+      background: #6fa1f9;
+    }
+    /* ── Bottom bar ── */
+    .bottombar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+      gap: 10px;
+    }
+    #status {
+      font-size: 10px;
+      color: var(--success);
+      opacity: 0;
+      transition: opacity 0.3s;
+      letter-spacing: 0.06em;
+    }
+    #save {
+      min-width: 120px;
+      padding: 8px 16px;
+    }
+    /* ── Preset picker ── */
+    .preset-picker {
+      background: var(--surface2);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--r);
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .preset-row {
+      display: block;
+      width: 100%;
+      padding: 7px 10px;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 11px;
+      font-family: var(--mono);
+      text-align: left;
+      cursor: pointer;
+    }
+    .preset-row:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .preset-row--added {
+      color: var(--text-dim);
+      cursor: default;
+    }
+    /* Context toggle tabs */
+    .ctx-tabs {
+      display: flex;
+      gap: 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .ctx-tab {
+      padding: 4px 10px;
+      font-size: 9px;
+      font-family: var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: color 0.15s, background 0.15s;
+    }
+    .ctx-tab.active {
+      background: var(--accent-lo);
+      color: var(--accent);
+    }
+    .ctx-tab:hover:not(.active) {
+      background: var(--surface2);
+      color: var(--text-mid);
+    }
+  </style>
+</head>
+<body>
+  <!-- Top bar -->
+  <div class="topbar">
+    <span class="topbar-brand">
+      Where The<strong>Sausage</strong><em>Toast</em> Is Made
+    </span>
+    <div class="topbar-actions">
+      <span id="status">saved.</span>
+    </div>
+  </div>
+  <!-- Main layout -->
+  <div class="layout">
+    <!-- Config pane -->
+    <div class="config-pane">
+      <!-- Visual Style (open by default) -->
+      <div class="section open" id="sec-visual">
+        <div class="section-head" data-section="sec-visual">
+          <span class="section-title">Visual Style</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div class="ctrl">
+            <span class="ctrl-label">Background</span>
+            <div class="ctrl-right">
+              <input type="color" id="bgColor" class="style-input" data-key="bgColor">
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Accent</span>
+            <div class="ctrl-right">
+              <input type="color" id="hoverColor" class="style-input" data-key="hoverColor">
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Opacity</span>
+            <div class="ctrl-right">
+              <input type="range" id="bgOpacity" class="style-input" data-key="bgOpacity" min="0.1" max="1" step="0.01">
+              <span class="val" id="val-bgOpacity">0.75</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Border Radius</span>
+            <div class="ctrl-right">
+              <input type="range" id="borderRadius" class="style-input" data-key="borderRadius" min="0" max="24"
+                step="1">
+              <span class="val" id="val-borderRadius">13</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Layout & Spacing -->
+      <div class="section open" id="sec-layout">
+        <div class="section-head" data-section="sec-layout">
+          <span class="section-title">Layout & Spacing</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div class="ctrl">
+            <span class="ctrl-label">Icon Size</span>
+            <div class="ctrl-right">
+              <input type="range" id="iconSize" class="style-input" data-key="iconSize" min="10" max="32" step="1">
+              <span class="val" id="val-iconSize">18</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Icon Padding</span>
+            <div class="ctrl-right">
+              <input type="range" id="iconPadding" class="style-input" data-key="iconPadding" min="2" max="16" step="1">
+              <span class="val" id="val-iconPadding">5</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Btn Spacing</span>
+            <div class="ctrl-right">
+              <input type="range" id="buttonSpacing" class="style-input" data-key="buttonSpacing" min="0" max="16"
+                step="1">
+              <span class="val" id="val-buttonSpacing">4</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Wall Padding</span>
+            <div class="ctrl-right">
+              <input type="range" id="padding" class="style-input" data-key="padding" min="2" max="20" step="1">
+              <span class="val" id="val-padding">6</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Animation & Interaction -->
+      <div class="section" id="sec-anim">
+        <div class="section-head" data-section="sec-anim">
+          <span class="section-title">Animation & Interaction</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div class="ctrl">
+            <span class="ctrl-label">Hover Scale</span>
+            <div class="ctrl-right">
+              <input type="range" id="hoverScale" class="style-input" data-key="hoverScale" min="1.0" max="1.5"
+                step="0.01">
+              <span class="val" id="val-hoverScale">1.15</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Active Click</span>
+            <div class="ctrl-right">
+              <input type="range" id="activeScale" class="style-input" data-key="activeScale" min="0.5" max="1.0"
+                step="0.01">
+              <span class="val" id="val-activeScale">0.9</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Icon Lift</span>
+            <div class="ctrl-right">
+              <input type="range" id="iconLift" class="style-input" data-key="iconLift" min="0" max="12" step="1">
+              <span class="val" id="val-iconLift">3</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Hover Opacity</span>
+            <div class="ctrl-right">
+              <input type="range" id="hoverOpacity" class="style-input" data-key="hoverOpacity" min="0.05" max="1"
+                step="0.01">
+              <span class="val" id="val-hoverOpacity">0.2</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Actions & Links -->
+      <div class="section open" id="sec-actions">
+        <div class="section-head" data-section="sec-actions">
+          <span class="section-title">Actions & Links</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div id="buttonList"></div>
+          <div class="add-row">
+            <button id="addBtn" class="btn btn-ghost">+ Action</button>
+            <button id="addImageSearchBtn" class="btn btn-ghost">+ Image Search</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Preview pane (pinned above footer) -->
+  <div class="preview-pane">
+    <div class="preview-header">
+      <span>Live Preview</span>
+      <div class="preview-header-dot"></div>
+    </div>
+    <div class="preview-stage">
+      <div class="preview-canvas-wrap">
+        <canvas id="previewCanvas"></canvas>
+        <span class="preview-label" id="previewDims">— × —</span>
+      </div>
+    </div>
+    <div class="preview-footer">
+      <div class="preview-stat">
+        <span>buttons</span>
+        <span class="preview-stat-val" id="statBtnCount">0</span>
+      </div>
+      <div class="preview-stat">
+        <span>icon px</span>
+        <span class="preview-stat-val" id="statIconPx">—</span>
+      </div>
+      <div class="preview-stat">
+        <span>bg alpha</span>
+        <span class="preview-stat-val" id="statBgAlpha">—</span>
+      </div>
+      <div class="preview-stat">
+        <span>radius</span>
+        <span class="preview-stat-val" id="statRadius">—</span>
+      </div>
+    </div>
+  </div>
+  <!-- Bottom bar -->
+  <div class="bottombar">
+    <span style="font-size:10px;color:var(--text-dim);">Changes are reflected live. Save to apply.</span>
+    <button id="save" class="btn btn-primary">Save Changes</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
+</file>
+
 <file path="popup.js">
 // popup.js
 document.addEventListener('DOMContentLoaded', () => {
+  // ─── Elements ────────────────────────────────────────────────────────────────
   const elements = {
     buttonList: document.getElementById('buttonList'),
     addBtn: document.getElementById('addBtn'),
     addImageSearchBtn: document.getElementById('addImageSearchBtn'),
     saveBtn: document.getElementById('save'),
     status: document.getElementById('status'),
-    styleInputs: document.querySelectorAll('.style-input')
+    styleInputs: document.querySelectorAll('.style-input'),
+    previewCanvas: document.getElementById('previewCanvas'),
+    previewDims: document.getElementById('previewDims'),
+    statBtnCount: document.getElementById('statBtnCount'),
+    statIconPx: document.getElementById('statIconPx'),
+    statBgAlpha: document.getElementById('statBgAlpha'),
+    statRadius: document.getElementById('statRadius'),
   }
+  const previewCtx = elements.previewCanvas.getContext('2d', { alpha: true })
+  // ─── Defaults ─────────────────────────────────────────────────────────────────
   const defaultConfig = {
     style: {
       bgColor: '#1b1c1d',
       bgOpacity: 0.75,
-      hoverColor: '#404040',
-      hoverOpacity: 0.2,
-      borderRadius: 13,
-      iconSize: 18,
+      hoverColor: '#696969',
+      hoverOpacity: 0.33,
+      borderRadius: 7,
+      iconSize: 16,
       iconPadding: 5,
-      buttonSpacing: 4,
+      buttonSpacing: 6,
       padding: 6,
       hoverScale: 1.15,
       activeScale: 0.9,
-      iconLift: 3
+      iconLift: 2
     },
     buttons: [
       {
@@ -842,7 +1126,7 @@ document.addEventListener('DOMContentLoaded', () => {
         action: 'markdown',
         markdownSource: 'selection',
         contexts: ['text'],
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="#d5d5d5" d="M3 3h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1m4 12.5v-4l2 2l2-2v4h2v-7h-2l-2 2l-2-2H5v7zm11-3v-4h-2v4h-2l3 3l3-3z"/></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 32 32"><path d="M0 0h32v32H0z" fill="none"/><path fill="#d5d5d5" d="M2.875 6C1.32 6 0 7.254 0 8.813v14.374C0 24.747 1.32 26 2.875 26h26.25C30.68 26 32 24.746 32 23.187V8.813C32 7.255 30.68 6 29.125 6zm0 2h26.25c.516 0 .875.383.875.813v14.374c0 .43-.36.813-.875.813H2.875C2.359 24 2 23.617 2 23.187V8.813c0-.43.36-.812.875-.812zM5 11v10h3v-6.656l3 3.969l3-3.97V21h3V11h-3l-3 4l-3-4zm17 0v5h-3l4.5 5l4.5-5h-3v-5z"/></svg>'
       },
       {
         id: 'google-text',
@@ -860,7 +1144,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     ]
   }
-  // Image search engine presets for the "Add Image Search" quick-add menu
   const IMAGE_SEARCH_PRESETS = [
     {
       label: 'Google Lens',
@@ -887,26 +1170,156 @@ document.addEventListener('DOMContentLoaded', () => {
       icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="M11 8v3h3m5 5l-3-3"/></g></svg>'
     }
   ]
+  // ─── State ────────────────────────────────────────────────────────────────────
   let currentConfig = null
-  chrome.storage.sync.get(['canvasToastConfig'], result => {
-    const saved = result.canvasToastConfig || {}
-    currentConfig = {
-      style: { ...defaultConfig.style, ...(saved.style || {}) },
-      buttons:
-        saved.buttons && saved.buttons.length > 0
-          ? saved.buttons
-          : defaultConfig.buttons
+  // Preview: loaded icon images keyed by button id
+  let previewIcons = {}
+  let previewRafId = null
+  // ─── Preview: Icon Loading ────────────────────────────────────────────────────
+  function svgToDataUri(svgStr) {
+    return 'data:image/svg+xml;charset=utf-8;base64,' +
+      btoa(unescape(encodeURIComponent(svgStr)))
+  }
+  function loadPreviewIcons() {
+    previewIcons = {}
+    const btns = currentConfig.buttons
+    if (btns.length === 0) {
+      schedulePreviewDraw()
+      return
     }
-    // Backfill contexts on any legacy buttons that are missing it
-    currentConfig.buttons = currentConfig.buttons.map(btn => ({
-      ...btn,
-      contexts:
-        btn.contexts && btn.contexts.length > 0 ? btn.contexts : ['text']
-    }))
-    renderUI()
+    let loaded = 0
+    btns.forEach(btn => {
+      const img = new Image()
+      let src = btn.icon || ''
+      if (src.trim().startsWith('<svg')) {
+        try { src = svgToDataUri(src) } catch { return }
+      }
+      img.onload = () => {
+        previewIcons[btn.id] = img
+        loaded++
+        if (loaded === btns.length) schedulePreviewDraw()
+      }
+      img.onerror = () => {
+        loaded++
+        if (loaded === btns.length) schedulePreviewDraw()
+      }
+      img.src = src
+    })
+  }
+  // ─── Preview: Draw ────────────────────────────────────────────────────────────
+  function hexToRgb(hex) {
+    const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+    return r ? {
+      r: parseInt(r[1], 16),
+      g: parseInt(r[2], 16),
+      b: parseInt(r[3], 16)
+    } : { r: 0, g: 0, b: 0 }
+  }
+  function roundRectPath(ctx, x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2
+    if (h < 2 * r) r = h / 2
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.arcTo(x + w, y, x + w, y + h, r)
+    ctx.arcTo(x + w, y + h, x, y + h, r)
+    ctx.arcTo(x, y + h, x, y, r)
+    ctx.arcTo(x, y, x + w, y, r)
+    ctx.closePath()
+  }
+  function schedulePreviewDraw() {
+    if (previewRafId) cancelAnimationFrame(previewRafId)
+    previewRafId = requestAnimationFrame(drawPreview)
+  }
+  function drawPreview() {
+    previewRafId = null
+    const { style, buttons } = currentConfig
+    const dpr = window.devicePixelRatio || 1
+    const btnSize = style.iconSize + style.iconPadding * 2
+    // Preview shows all buttons (context-agnostic — you see the full set)
+    const count = buttons.length
+    if (count === 0) {
+      elements.previewCanvas.style.width = '0px'
+      elements.previewCanvas.style.height = '0px'
+      updatePreviewStats(0, btnSize)
+      return
+    }
+    const totalW = style.padding * 2 + btnSize * count + style.buttonSpacing * (count - 1)
+    const totalH = style.padding * 2 + btnSize
+    // Size canvas
+    elements.previewCanvas.style.width = totalW + 'px'
+    elements.previewCanvas.style.height = totalH + 'px'
+    elements.previewCanvas.width = totalW * dpr
+    elements.previewCanvas.height = totalH * dpr
+    elements.previewCanvas.style.borderRadius = style.borderRadius + 'px'
+    const c = previewCtx
+    c.setTransform(1, 0, 0, 1, 0, 0)
+    c.scale(dpr, dpr)
+    c.clearRect(0, 0, totalW, totalH)
+    // Background fill (simulating the backdrop — we can't do real backdrop-filter in canvas)
+    const bg = hexToRgb(style.bgColor)
+    c.fillStyle = `rgba(${bg.r},${bg.g},${bg.b},${style.bgOpacity})`
+    c.fillRect(0, 0, totalW, totalH)
+    // Thin border to simulate the toast shell
+    c.strokeStyle = 'rgba(255,255,255,0.12)'
+    c.lineWidth = 0.5
+    c.strokeRect(0.25, 0.25, totalW - 0.5, totalH - 0.5)
+    // Highlight: simulate hovered state on button index 1 (if it exists)
+    const highlightIndex = Math.min(1, count - 1)
+    let x = style.padding
+    const y = style.padding
+    buttons.forEach((btn, i) => {
+      const isHovered = i === highlightIndex
+      const hoverVal = isHovered ? 1 : 0
+      if (isHovered) {
+        const targetScale = 1 + (style.hoverScale - 1)
+        const scaledSize = btnSize * targetScale
+        const offset = (btnSize - scaledSize) / 2
+        const hc = hexToRgb(style.hoverColor)
+        c.fillStyle = `rgba(${hc.r},${hc.g},${hc.b},${style.hoverOpacity})`
+        roundRectPath(c, x + offset, y + offset, scaledSize, scaledSize, style.borderRadius * 0.7)
+        c.fill()
+        const iconImg = previewIcons[btn.id]
+        if (iconImg) {
+          const scaledIconSize = style.iconSize * targetScale
+          const ix = x + (btnSize - scaledIconSize) / 2
+          const iy = y + (btnSize - scaledIconSize) / 2 - style.iconLift
+          c.filter = `brightness(1.3)`
+          c.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
+          c.filter = 'none'
+        }
+      } else {
+        const iconImg = previewIcons[btn.id]
+        if (iconImg) {
+          const ix = x + (btnSize - style.iconSize) / 2
+          const iy = y + (btnSize - style.iconSize) / 2
+          c.filter = 'brightness(0.75)'
+          c.drawImage(iconImg, ix, iy, style.iconSize, style.iconSize)
+          c.filter = 'none'
+        }
+      }
+      x += btnSize + style.buttonSpacing
+    })
+    updatePreviewStats(count, btnSize, totalW, totalH, style)
+  }
+  function updatePreviewStats(count, btnSize, w, h, style) {
+    elements.statBtnCount.textContent = count
+    if (style) {
+      elements.statIconPx.textContent = style.iconSize + 'px'
+      elements.statBgAlpha.textContent = style.bgOpacity
+      elements.statRadius.textContent = style.borderRadius + 'px'
+      elements.previewDims.textContent = `${Math.round(w || 0)} × ${Math.round(h || 0)}`
+    }
+  }
+  // ─── Section Collapse ─────────────────────────────────────────────────────────
+  document.querySelectorAll('.section-head').forEach(head => {
+    head.addEventListener('click', () => {
+      const sec = document.getElementById(head.dataset.section)
+      if (sec) sec.classList.toggle('open')
+    })
   })
-  // --- Render ---
-  function renderUI () {
+  // ─── Render UI ────────────────────────────────────────────────────────────────
+  function renderUI() {
+    // Populate style inputs
     elements.styleInputs.forEach(input => {
       const key = input.dataset.key
       if (currentConfig.style[key] !== undefined) {
@@ -915,155 +1328,174 @@ document.addEventListener('DOMContentLoaded', () => {
         if (display) display.textContent = currentConfig.style[key]
       }
     })
+    // Render button list
     if (!elements.buttonList) return
     elements.buttonList.innerHTML = ''
     currentConfig.buttons.forEach((btn, index) => {
       elements.buttonList.appendChild(buildButtonItem(btn, index))
     })
     attachListeners()
+    loadPreviewIcons()
   }
-  function buildButtonItem (btn, index) {
+  // ─── Button Item Builder ──────────────────────────────────────────────────────
+  function buildButtonItem(btn, index) {
     const item = document.createElement('div')
     item.className = 'btn-item'
-    // Header
-    const header = document.createElement('div')
-    header.className = 'btn-header'
-    const headerLabel = document.createElement('span')
-    headerLabel.textContent = `Action ${index + 1}`
+    // Collapsible head
+    const head = document.createElement('div')
+    head.className = 'btn-item-head'
+    const label = document.createElement('span')
+    label.className = 'btn-item-label'
+    label.textContent = getButtonLabel(btn, index)
+    const controls = document.createElement('div')
+    controls.className = 'btn-item-controls'
     const removeBtn = document.createElement('span')
-    removeBtn.className = 'btn-remove'
+    removeBtn.className = 'btn-item-remove'
     removeBtn.dataset.index = index
-    removeBtn.textContent = '✖'
-    header.appendChild(headerLabel)
-    header.appendChild(removeBtn)
-    item.appendChild(header)
-    // Context checkboxes
-    item.appendChild(buildContextCheckboxes(btn, index))
+    removeBtn.title = 'Remove'
+    removeBtn.textContent = '✕'
+    controls.appendChild(removeBtn)
+    head.appendChild(label)
+    head.appendChild(controls)
+    item.appendChild(head)
+    // Body
+    const body = document.createElement('div')
+    body.className = 'btn-item-body'
+    // Context row
+    const ctxLabel = document.createElement('span')
+    ctxLabel.className = 'field-label'
+    ctxLabel.textContent = 'Context'
+    body.appendChild(ctxLabel)
+    body.appendChild(buildContextCheckboxes(btn, index))
     // Type select
+    const typeLabel = document.createElement('span')
+    typeLabel.className = 'field-label'
+    typeLabel.textContent = 'Type'
+    body.appendChild(typeLabel)
     const typeSelect = document.createElement('select')
     typeSelect.className = 'config-input type-select'
     typeSelect.dataset.field = 'type'
     typeSelect.dataset.index = index
-    ;[
-      { value: 'action', label: 'System Action' },
-      { value: 'link', label: 'Search / Link' },
-      { value: 'image-search', label: 'Image Search' }
-    ].forEach(({ value, label }) => {
-      const opt = document.createElement('option')
-      opt.value = value
-      opt.textContent = label
-      opt.selected = btn.type === value
-      typeSelect.appendChild(opt)
-    })
-    item.appendChild(typeSelect)
+      ;[
+        { value: 'action', label: 'System Action' },
+        { value: 'link', label: 'Search / Link' },
+        { value: 'image-search', label: 'Image Search' }
+      ].forEach(({ value, label: lbl }) => {
+        const opt = document.createElement('option')
+        opt.value = value
+        opt.textContent = lbl
+        opt.selected = btn.type === value
+        typeSelect.appendChild(opt)
+      })
+    body.appendChild(typeSelect)
     // Type-specific fields
     if (btn.type === 'action') {
-      item.appendChild(buildActionSelect(btn, index))
-    } else if (btn.type === 'link') {
-      item.appendChild(
-        buildUrlInput(btn, index, 'https://google.com/search?q=%s')
-      )
-    } else if (btn.type === 'image-search') {
-      item.appendChild(
-        buildUrlInput(btn, index, 'https://lens.google.com/uploadbyurl?url=%s')
-      )
-      const hint = document.createElement('span')
-      hint.className = 'helper-text'
-      hint.textContent = 'Use %s for the image URL'
-      item.appendChild(hint)
-    }
-    if (btn.type === 'action') {
-      item.appendChild(buildActionSelect(btn, index))
+      const actLabel = document.createElement('span')
+      actLabel.className = 'field-label'
+      actLabel.textContent = 'Action'
+      body.appendChild(actLabel)
+      body.appendChild(buildActionSelect(btn, index))
       if (btn.action === 'markdown') {
-        item.appendChild(buildMarkdownSourceSelect(btn, index))
+        body.appendChild(buildMarkdownSourceSelect(btn, index))
       }
+    } else if (btn.type === 'link') {
+      const urlLabel = document.createElement('span')
+      urlLabel.className = 'field-label'
+      urlLabel.textContent = 'URL (%s = selection)'
+      body.appendChild(urlLabel)
+      body.appendChild(buildUrlInput(btn, index, 'https://google.com/search?q=%s'))
+    } else if (btn.type === 'image-search') {
+      const urlLabel = document.createElement('span')
+      urlLabel.className = 'field-label'
+      urlLabel.textContent = 'URL (%s = image URL)'
+      body.appendChild(urlLabel)
+      body.appendChild(buildUrlInput(btn, index, 'https://lens.google.com/uploadbyurl?url=%s'))
     }
     // Icon
-    const iconHelper = document.createElement('span')
-    iconHelper.className = 'helper-text'
-    iconHelper.textContent = 'SVG Icon Code:'
-    item.appendChild(iconHelper)
+    const iconLabel = document.createElement('span')
+    iconLabel.className = 'field-label'
+    iconLabel.textContent = 'SVG Icon'
+    body.appendChild(iconLabel)
     const iconArea = document.createElement('textarea')
     iconArea.className = 'config-input'
     iconArea.dataset.field = 'icon'
     iconArea.dataset.index = index
     iconArea.textContent = btn.icon || ''
-    item.appendChild(iconArea)
+    body.appendChild(iconArea)
+    item.appendChild(body)
     return item
   }
-  function buildContextCheckboxes (btn, index) {
+  function getButtonLabel(btn, index) {
+    if (btn.type === 'action') return `#${index + 1} · ${btn.action || 'action'}`
+    if (btn.type === 'link') return `#${index + 1} · link`
+    if (btn.type === 'image-search') return `#${index + 1} · image-search`
+    return `#${index + 1}`
+  }
+  function buildContextCheckboxes(btn, index) {
     const wrapper = document.createElement('div')
-    wrapper.className = 'context-row'
-    const label = document.createElement('span')
-    label.className = 'helper-text'
-    label.textContent = 'Show in:'
-    wrapper.appendChild(label)
-    const checkboxWrapper = document.createElement('div')
-    checkboxWrapper.className = 'checkbox-group'
-    ;[
-      { value: 'text', label: 'Text' },
-      { value: 'image', label: 'Image' }
-    ].forEach(({ value, label: cbLabel }) => {
-      const cbLabel_el = document.createElement('label')
-      cbLabel_el.className = 'checkbox-label'
-      const cb = document.createElement('input')
-      cb.type = 'checkbox'
-      cb.className = 'context-checkbox'
-      cb.dataset.index = index
-      cb.dataset.context = value
-      cb.checked = (btn.contexts || ['text']).includes(value)
-      cbLabel_el.appendChild(cb)
-      cbLabel_el.appendChild(document.createTextNode(' ' + cbLabel))
-      checkboxWrapper.appendChild(cbLabel_el)
-    })
-    wrapper.appendChild(checkboxWrapper)
+    wrapper.className = 'checkbox-group'
+    wrapper.style.marginBottom = '4px'
+      ;[
+        { value: 'text', label: 'text' },
+        { value: 'image', label: 'image' }
+      ].forEach(({ value, label }) => {
+        const lbl = document.createElement('label')
+        lbl.className = 'cb-label'
+        const cb = document.createElement('input')
+        cb.type = 'checkbox'
+        cb.className = 'context-checkbox'
+        cb.dataset.index = index
+        cb.dataset.context = value
+        cb.checked = (btn.contexts || ['text']).includes(value)
+        lbl.appendChild(cb)
+        lbl.appendChild(document.createTextNode(' ' + label))
+        wrapper.appendChild(lbl)
+      })
     return wrapper
   }
-  function buildActionSelect (btn, index) {
+  function buildActionSelect(btn, index) {
     const sel = document.createElement('select')
     sel.className = 'config-input'
     sel.dataset.field = 'action'
     sel.dataset.index = index
-    ;[
-      { value: 'copy', label: 'Copy' },
-      { value: 'paste', label: 'Paste' },
-      { value: 'markdown', label: 'As Markdown' }
-    ].forEach(({ value, label }) => {
-      const opt = document.createElement('option')
-      opt.value = value
-      opt.textContent = label
-      opt.selected = btn.action === value
-      sel.appendChild(opt)
-    })
+      ;[
+        { value: 'copy', label: 'Copy' },
+        { value: 'paste', label: 'Paste' },
+        { value: 'markdown', label: 'As Markdown' }
+      ].forEach(({ value, label }) => {
+        const opt = document.createElement('option')
+        opt.value = value
+        opt.textContent = label
+        opt.selected = btn.action === value
+        sel.appendChild(opt)
+      })
     return sel
   }
-  // Helper function for Markdown conversion
-  function buildMarkdownSourceSelect (btn, index) {
+  function buildMarkdownSourceSelect(btn, index) {
     const label = document.createElement('span')
-    label.className = 'helper-text'
-    label.textContent = 'Markdown source:'
-
+    label.className = 'field-label'
+    label.textContent = 'Markdown Source'
+    label.style.marginTop = '4px'
     const sel = document.createElement('select')
     sel.className = 'config-input'
     sel.dataset.field = 'markdownSource'
     sel.dataset.index = index
-    ;[
-      { value: 'selection', label: 'Highlighted Text' },
-      { value: 'page', label: 'Entire Page' }
-    ].forEach(({ value, label: optLabel }) => {
-      const opt = document.createElement('option')
-      opt.value = value
-      opt.textContent = optLabel
-      opt.selected = (btn.markdownSource || 'selection') === value
-      sel.appendChild(opt)
-    })
-
-    const wrapper = document.createElement('div')
-    wrapper.appendChild(label)
-    wrapper.appendChild(sel)
-    return wrapper
+      ;[
+        { value: 'selection', label: 'Highlighted Text' },
+        { value: 'page', label: 'Entire Page' }
+      ].forEach(({ value, label: lbl }) => {
+        const opt = document.createElement('option')
+        opt.value = value
+        opt.textContent = lbl
+        opt.selected = (btn.markdownSource || 'selection') === value
+        sel.appendChild(opt)
+      })
+    const wrap = document.createElement('div')
+    wrap.appendChild(label)
+    wrap.appendChild(sel)
+    return wrap
   }
-  function buildUrlInput (btn, index, placeholder) {
+  function buildUrlInput(btn, index, placeholder) {
     const input = document.createElement('input')
     input.type = 'text'
     input.className = 'config-input'
@@ -1073,14 +1505,17 @@ document.addEventListener('DOMContentLoaded', () => {
     input.placeholder = placeholder
     return input
   }
-  // --- Listeners ---
-  function attachListeners () {
-    document.querySelectorAll('.btn-remove').forEach(el => {
+  // ─── Event Listeners ──────────────────────────────────────────────────────────
+  function attachListeners() {
+    // Remove buttons
+    document.querySelectorAll('.btn-item-remove').forEach(el => {
       el.addEventListener('click', e => {
+        e.stopPropagation()
         currentConfig.buttons.splice(Number(e.target.dataset.index), 1)
         renderUI()
       })
     })
+    // Context checkboxes
     document.querySelectorAll('.context-checkbox').forEach(cb => {
       cb.addEventListener('change', e => {
         const idx = Number(e.target.dataset.index)
@@ -1092,13 +1527,15 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           btn.contexts = btn.contexts.filter(c => c !== ctx)
         }
+        schedulePreviewDraw()
       })
     })
+    // Config inputs (type, action, url, icon, markdownSource)
     document.querySelectorAll('.config-input').forEach(el => {
       el.addEventListener('change', e => {
         const idx = Number(e.target.dataset.index)
         const field = e.target.dataset.field
-        if (field === undefined || idx === undefined || isNaN(idx)) return
+        if (field === undefined || isNaN(idx)) return
         const btn = currentConfig.buttons[idx]
         if (!btn) return
         if (field === 'type') {
@@ -1108,25 +1545,27 @@ document.addEventListener('DOMContentLoaded', () => {
             delete btn.action
           } else if (btn.type === 'image-search') {
             btn.url = 'https://lens.google.com/uploadbyurl?url=%s'
-            // Default new image-search buttons to image context
-            if (!btn.contexts || btn.contexts.length === 0) {
-              btn.contexts = ['image']
-            }
+            if (!btn.contexts || btn.contexts.length === 0) btn.contexts = ['image']
             delete btn.action
           } else if (btn.type === 'action') {
             btn.action = 'copy'
             delete btn.url
           }
           renderUI()
-        } else if (field === 'action') {
+          return
+        }
+        if (field === 'action') {
           btn.action = e.target.value
           if (btn.action !== 'markdown') delete btn.markdownSource
           renderUI()
-        } else {
-          btn[field] = e.target.value
+          return
         }
+        btn[field] = e.target.value
+        // Re-render preview on icon change (requires reload)
+        if (field === 'icon') loadPreviewIcons()
       })
     })
+    // Style inputs — live preview on every input event
     elements.styleInputs.forEach(input => {
       input.addEventListener('input', e => {
         const key = e.target.dataset.key
@@ -1137,33 +1576,28 @@ document.addEventListener('DOMContentLoaded', () => {
           if (display) display.textContent = val
         }
         currentConfig.style[key] = val
+        schedulePreviewDraw()
       })
     })
   }
-  // --- Add Buttons ---
+  // ─── Add Buttons ─────────────────────────────────────────────────────────────
   elements.addBtn.addEventListener('click', () => {
     currentConfig.buttons.push({
       id: 'btn-' + Date.now(),
       type: 'link',
       url: 'https://',
       contexts: ['text'],
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>'
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#d5d5d5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>'
     })
     renderUI()
   })
-  // Dropdown for image search presets
   elements.addImageSearchBtn.addEventListener('click', e => {
-    // Toggle a small preset picker beneath the button
     const existing = document.getElementById('preset-picker')
-    if (existing) {
-      existing.remove()
-      return
-    }
+    if (existing) { existing.remove(); return }
     const picker = document.createElement('div')
     picker.id = 'preset-picker'
     picker.className = 'preset-picker'
     IMAGE_SEARCH_PRESETS.forEach(preset => {
-      // Disable if already in the list
       const alreadyAdded = currentConfig.buttons.some(b => b.id === preset.id)
       const row = document.createElement('button')
       row.className = 'preset-row' + (alreadyAdded ? ' preset-row--added' : '')
@@ -1182,35 +1616,48 @@ document.addEventListener('DOMContentLoaded', () => {
       })
       picker.appendChild(row)
     })
-    // Insert after the button
     elements.addImageSearchBtn.insertAdjacentElement('afterend', picker)
   })
-  // Close preset picker on outside click
   document.addEventListener('click', e => {
     const picker = document.getElementById('preset-picker')
-    if (
-      picker &&
-      !picker.contains(e.target) &&
-      e.target !== elements.addImageSearchBtn
-    ) {
+    if (picker && !picker.contains(e.target) && e.target !== elements.addImageSearchBtn) {
       picker.remove()
     }
   })
-  // --- Save ---
+  // ─── Save ────────────────────────────────────────────────────────────────────
   elements.saveBtn.addEventListener('click', () => {
+    const origText = elements.saveBtn.textContent
     elements.saveBtn.textContent = 'Saving...'
+    elements.saveBtn.disabled = true
     chrome.storage.sync.set({ canvasToastConfig: currentConfig }, () => {
-      elements.saveBtn.textContent = 'Save Changes'
+      elements.saveBtn.textContent = origText
+      elements.saveBtn.disabled = false
       elements.status.style.opacity = '1'
-      setTimeout(() => {
-        elements.status.style.opacity = '0'
-      }, 2000)
+      setTimeout(() => { elements.status.style.opacity = '0' }, 2000)
     })
+  })
+  // ─── Bootstrap ───────────────────────────────────────────────────────────────
+  chrome.storage.sync.get(['canvasToastConfig'], result => {
+    const saved = result.canvasToastConfig || {}
+    currentConfig = {
+      style: { ...defaultConfig.style, ...(saved.style || {}) },
+      buttons: saved.buttons && saved.buttons.length > 0
+        ? saved.buttons
+        : defaultConfig.buttons
+    }
+    // Backfill missing contexts
+    currentConfig.buttons = currentConfig.buttons.map(btn => ({
+      ...btn,
+      contexts: btn.contexts && btn.contexts.length > 0 ? btn.contexts : ['text']
+    }))
+    renderUI()
   })
 })
 </file>
 
 <file path="content.js">
+import TurndownService from 'turndown'
+import { gfm } from 'turndown-plugin-gfm'
 // content.js - Toast Selection Popup (Hybrid DOM + Canvas)
 ; (function () {
   'use strict'
@@ -1258,21 +1705,40 @@ document.addEventListener('DOMContentLoaded', () => {
       spring.vel = 0
     }
   }
+  const turndownService = new TurndownService({
+    headingStyle: 'atx',
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    fence: '```',
+    hr: '---',
+    linkStyle: 'inlined'
+  })
+  turndownService.use(gfm)
+  turndownService.addRule('removeHidden', {
+    filter: el =>
+      el.style &&
+      (el.style.display === 'none' || el.style.visibility === 'hidden'),
+    replacement: () => ''
+  })
+  turndownService.addRule('lineBreak', {
+    filter: 'br',
+    replacement: () => '  \n'
+  })
   // --- Default Configuration ---
   const defaultConfig = {
     style: {
       bgColor: '#1b1c1d',
       bgOpacity: 0.75,
-      hoverColor: '#404040',
-      hoverOpacity: 0.2,
-      borderRadius: 13,
+      hoverColor: '#696969',
+      hoverOpacity: 0.33,
+      borderRadius: 7,
       padding: 6,
-      iconSize: 18,
+      iconSize: 16,
       iconPadding: 5,
-      buttonSpacing: 4,
+      buttonSpacing: 6,
       hoverScale: 1.15,
       activeScale: 0.9,
-      iconLift: 3
+      iconLift: 2
     },
     buttons: [
       {
@@ -1313,7 +1779,6 @@ document.addEventListener('DOMContentLoaded', () => {
   //     (el.style.display === 'none' || el.style.visibility === 'hidden'),
   //   replacement: () => ''
   // })
-
   let config = JSON.parse(JSON.stringify(defaultConfig))
   // --- Helpers ---
   const hexToRgbCache = new Map()
@@ -1373,7 +1838,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (hostEl && document.body.contains(hostEl)) {
       document.body.removeChild(hostEl)
     }
-
     hostEl = document.createElement('div')
     hostEl.id = 'toast-extension-root'
     Object.assign(hostEl.style, {
@@ -1384,9 +1848,7 @@ document.addEventListener('DOMContentLoaded', () => {
       pointerEvents: 'none',
       all: 'initial'
     })
-
     shadow = hostEl.attachShadow({ mode: 'closed' })
-
     toastEl = document.createElement('div')
     Object.assign(toastEl.style, {
       position: 'fixed',
@@ -1402,13 +1864,11 @@ document.addEventListener('DOMContentLoaded', () => {
       opacity: '0',
       transform: 'scale(0.7)'
     })
-
     canvas = document.createElement('canvas')
     Object.assign(canvas.style, {
       display: 'block',
       pointerEvents: 'none'
     })
-
     toastEl.appendChild(canvas)
     shadow.appendChild(toastEl)
     document.body.appendChild(hostEl)
@@ -1427,14 +1887,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('mouseup', handleMouseUp)
     document.addEventListener('mousedown', handleMouseDown)
     document.addEventListener('scroll', handleScroll, { passive: true })
-
     // Image hover tracking
     document.addEventListener('mouseover', handleImageMouseOver)
     document.addEventListener('mouseout', handleImageMouseOut)
-
     // Ctrl+hover trigger
     document.addEventListener('keydown', handleKeyDown)
-
     // Canvas interactions
     canvas.addEventListener('mousemove', handleMouseMove)
     canvas.addEventListener('mousedown', handleCanvasDown)
@@ -1446,28 +1903,30 @@ document.addEventListener('DOMContentLoaded', () => {
     })
   }
   // Replace handleImageClick with these three functions:
-
   function handleImageMouseOver(e) {
+    if (!chrome.runtime?.id) return
     clearTimeout(hoverTimeout)
     hoverTimeout = setTimeout(() => {
+      if (!chrome.runtime?.id) return
       const target = e.target
       if (!(target instanceof HTMLImageElement)) return
       if (hostEl && hostEl.contains(target)) return
       hoveredImage = target
     }, 50)
   }
-
   function handleImageMouseOut(e) {
+    if (!chrome.runtime?.id) return
     const target = e.target
     if (!(target instanceof HTMLImageElement)) return
     if (hostEl && hostEl.contains(e.relatedTarget)) return
     if (target === hoveredImage) hoveredImage = null
   }
-
   function handleMouseUp(e) {
+    if (!chrome.runtime?.id) return
     if (hostEl && hostEl.contains(e.target)) return
     if (selectionRafId) cancelAnimationFrame(selectionRafId)
     selectionRafId = requestAnimationFrame(() => {
+      if (!chrome.runtime?.id) return
       selectionRafId = null
       const sel = window.getSelection()
       if (!sel || sel.rangeCount === 0) return
@@ -1477,7 +1936,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentSelection = text
         imageContext = { src: null, resolvedUrl: null, isAccessible: true }
         try {
-          selectionRange = sel.getRangeAt(0)
+          selectionRange = sel.getRangeAt(0).cloneRange()
           const rect = selectionRange.getBoundingClientRect()
           if (rect.width === 0 && rect.height === 0) return
           showToast(rect)
@@ -1489,13 +1948,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     })
   }
-
   function handleMouseDown(e) {
+    if (!chrome.runtime?.id) return
     if (isVisible && hostEl && !hostEl.contains(e.target)) {
       hideToast()
     }
   }
-
   function handleMouseMove(e) {
     if (!isVisible) return
     const rect = canvas.getBoundingClientRect()
@@ -1513,12 +1971,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     canvas.style.cursor = hoveredIndex !== -1 ? 'pointer' : 'default'
   }
-
   function handleKeyDown(e) {
+    if (!chrome.runtime?.id) return
     // Only Control, not Ctrl+C / Ctrl+V / etc.
     if (e.key !== 'Control' || e.ctrlKey === false) return
     if (!hoveredImage) return
-
     const resolved = resolveImageUrl(hoveredImage.src)
     imageContext = {
       src: hoveredImage.src,
@@ -1528,39 +1985,11 @@ document.addEventListener('DOMContentLoaded', () => {
     currentContext = 'image'
     window.getSelection()?.removeAllRanges()
     currentSelection = ''
-
     const rect = hoveredImage.getBoundingClientRect()
     showToast(rect)
   }
-  // --- Selection Handlers ---
-  let selectionRafId = null
-  function handleMouseUp(e) {
-    if (hostEl && hostEl.contains(e.target)) return
-    if (selectionRafId) cancelAnimationFrame(selectionRafId)
-    selectionRafId = requestAnimationFrame(() => {
-      selectionRafId = null
-      const sel = window.getSelection()
-      if (!sel || sel.rangeCount === 0) return
-      const text = sel.toString().trim()
-      if (text.length > 0) {
-        currentContext = 'text'
-        currentSelection = text
-        imageContext = { src: null, resolvedUrl: null, isAccessible: true }
-        try {
-          selectionRange = sel.getRangeAt(0)
-          const rect = selectionRange.getBoundingClientRect()
-          if (rect.width === 0 && rect.height === 0) return
-          showToast(rect)
-        } catch (err) {
-          console.error('[Toast] Range error', err)
-        }
-      } else {
-        if (!isMouseDown) hideToast()
-      }
-    })
-  }
-
   function handleScroll() {
+    if (!chrome.runtime?.id) return
     if (isVisible) hideToast()
   }
   // --- Toast Lifecycle ---
@@ -1568,9 +1997,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return config.buttons.filter(btn => {
       const contexts = btn.contexts
       const hasContext = (!contexts || contexts.length === 0) ? currentContext === 'text' : contexts.includes(currentContext)
-
       if (!hasContext) return false
-
       if (btn.regex && currentContext === 'text') {
         try {
           const rgx = new RegExp(btn.regex, 'i')
@@ -1579,11 +2006,9 @@ document.addEventListener('DOMContentLoaded', () => {
           return false
         }
       }
-
       return true
     })
   }
-
   function showToast(rect) {
     const { style } = config
     const contextBtns = getContextButtons()
@@ -1602,19 +2027,16 @@ document.addEventListener('DOMContentLoaded', () => {
     toastEl.style.width = totalWidth + 'px'
     toastEl.style.height = totalHeight + 'px'
     applyWrapperStyles()
-
     let left = rect.left + rect.width / 2 - totalWidth / 2
     let top = currentContext === 'image' ? rect.top - totalHeight - 16 : rect.top - totalHeight - 16
     if (top < 8) top = rect.bottom + 16
     if (left < 10) left = 10
     if (left + totalWidth > window.innerWidth - 10) left = window.innerWidth - totalWidth - 10
-
     toastEl.style.left = left + 'px'
     toastEl.style.top = top + 'px'
     toastEl.style.display = 'block'
     toastEl.style.pointerEvents = 'auto'
     canvas.style.pointerEvents = 'auto'
-
     if (!isVisible) {
       isVisible = true
       springs.opacity.val = 0
@@ -1626,7 +2048,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     wake()
   }
-
   function hideToast() {
     isVisible = false
     toastEl.style.pointerEvents = 'none'
@@ -1644,29 +2065,23 @@ document.addEventListener('DOMContentLoaded', () => {
       animationId = requestAnimationFrame(loop)
     }
   }
-
   function loop(timestamp) {
     if (!lastTime) lastTime = timestamp
     const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
     lastTime = timestamp
-
     updateState(dt)
     draw()
-
     // Must check BOTH velocity AND distance to target so springs don't sleep mid-bounce
     const opacityTarget = isVisible ? 1 : 0
     const scaleTarget = isVisible ? 1 : 0.9
-
     const opacityMoving = Math.abs(springs.opacity.vel) > 0.01 || Math.abs(springs.opacity.val - opacityTarget) > 0.01
     const scaleMoving = Math.abs(springs.scale.vel) > 0.01 || Math.abs(springs.scale.val - scaleTarget) > 0.01
-
     const buttonsMoving = springs.buttons.some((b, i) => {
       const hoverTarget = animState.hoveredButtonIndex === i ? 1 : 0
       const activeTarget = (animState.hoveredButtonIndex === i && isMouseDown) ? 1 : 0
       return Math.abs(b.hover.vel) > 0.01 || Math.abs(b.hover.val - hoverTarget) > 0.01 ||
         Math.abs(b.active.vel) > 0.01 || Math.abs(b.active.val - activeTarget) > 0.01
     })
-
     if (opacityMoving || scaleMoving || buttonsMoving) {
       animationId = requestAnimationFrame(loop)
     } else {
@@ -1816,18 +2231,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isVisible) requestAnimationFrame(draw)
     })
   }
-
   function handleCanvasDown() {
     if (animState.hoveredButtonIndex !== -1) isMouseDown = true
   }
   async function handleCanvasUp() {
+    if (!chrome.runtime?.id) return
     isMouseDown = false
     wake()
     if (animState.hoveredButtonIndex === -1) return
     const btn = buttons[animState.hoveredButtonIndex]
     if (!btn) return
     const { type, url, action } = btn.data
-
     if (type === 'link') {
       const targetUrl = url.includes('%s') ? url.replace('%s', encodeURIComponent(currentSelection)) : url
       window.open(targetUrl, '_blank')
@@ -1863,11 +2277,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     hideToast()
   }
-
   async function handleMarkdownCopy(btn) {
+    if (!chrome.runtime?.id) return
     const source = btn.markdownSource || 'selection'
     let htmlPayload = ''
-
     if (source === 'page') {
       const clone = document.body.cloneNode(true)
       const noisy = [
@@ -1886,12 +2299,12 @@ document.addEventListener('DOMContentLoaded', () => {
       wrapper.appendChild(fragment)
       htmlPayload = wrapper.innerHTML
     }
-
-    chrome.runtime.sendMessage({ type: 'MARKDOWN', html: htmlPayload }, res => {
-      if (res && res.markdown) {
-        navigator.clipboard.writeText(res.markdown).catch(console.error)
-      }
-    })
+    try {
+      const markdown = turndownService.turndown(htmlPayload)
+      await navigator.clipboard.writeText(markdown)
+    } catch (err) {
+      console.error('[Toast] Markdown copy failed:', err)
+    }
   }
   // --- Action Handlers ---
   function handleImageSearch(urlTemplate) {
@@ -2008,7 +2421,7 @@ document.addEventListener('DOMContentLoaded', () => {
 {
   "manifest_version": 3,
   "name": "Toast - Floating Selection Menu",
-  "version": "4.0.0",
+  "version": "4.5.0",
   "description": "A customizable floating action menu that appears when you select text.",
   "permissions": ["storage", "clipboardWrite", "clipboardRead"],
   "background": {

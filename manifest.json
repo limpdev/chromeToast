@@ -4,6 +4,11 @@
   "version": "4.5.0",
   "description": "A customizable floating action menu that appears when you select text.",
   "permissions": ["storage", "clipboardWrite", "clipboardRead"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "limpdev@proton.me"
+    }
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -23,11 +28,5 @@
     "16": "assets/icon16.png",
     "48": "assets/icon48.png",
     "128": "assets/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["assets/*.png"],
-      "matches": ["chrome-extension://*/*"]
-    }
-  ]
+  }
 }

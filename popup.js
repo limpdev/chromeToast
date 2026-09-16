@@ -108,8 +108,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // ─── Preview: Icon Loading ────────────────────────────────────────────────────
 
   function svgToDataUri(svgStr) {
-    return 'data:image/svg+xml;charset=utf-8;base64,' +
-      btoa(unescape(encodeURIComponent(svgStr)))
+    const bytes = new TextEncoder().encode(svgStr)
+    const binStr = String.fromCharCode(...bytes)
+    return 'data:image/svg+xml;charset=utf-8;base64,' + btoa(binStr)
   }
 
   function loadPreviewIcons() {

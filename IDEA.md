@@ -1,0 +1,1 @@
+Toast is a browser extension focused on being the most performant popup menu for when user's highlight text on the  page. Toast aims to use the CanvasAPI to maximize its speed; thereby, mimicking a native-like experience.

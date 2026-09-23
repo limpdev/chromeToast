@@ -48,12 +48,673 @@ build.js
 content.js
 manifest.json
 package.json
+popup.css
 popup.html
 popup.js
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="popup.css">
+:root {
+    --bg: #0a0b0d;
+    --surface: #111316;
+    --surface2: #191c21;
+    --border: rgba(255, 255, 255, 0.07);
+    --border-hi: rgba(255, 255, 255, 0.14);
+    --accent: #4f8ef7;
+    --accent-lo: rgba(79, 142, 247, 0.12);
+    --accent-mid: rgba(79, 142, 247, 0.22);
+    --text: #e8eaed;
+    --text-dim: #6b7280;
+    --text-mid: #9ca3af;
+    --danger: #f87171;
+    --success: #34d399;
+    --sans: "Atkinson Hyperlegible", "Aptos", sans-serif;
+    --mono: "AtkynsonMono Nerd Font", "Aptos Mono", monospace;
+    --r: 6px;
+}
+
+::-webkit-scrollbar {
+    display: none;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    width: 700px;
+    height: 600px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#previewCanvas {
+    border: 1px solid #ffffff16;
+}
+
+/* ── Top bar ── */
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+}
+
+.topbar-brand {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-mid);
+}
+
+.topbar-brand strong {
+    color: var(--text);
+    font-style: italic;
+    text-decoration: line-through;
+    opacity: 0.35;
+    margin: 0 5px;
+}
+
+.topbar-brand em {
+    color: var(--text);
+    font-style: normal;
+    text-decoration: double;
+    font-weight: 500;
+}
+
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ── Main layout ── */
+.layout {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface2) transparent;
+}
+
+/* Moved scrollbar styling to apply to .layout */
+.layout::-webkit-scrollbar {
+    width: 4px;
+}
+
+.layout::-webkit-scrollbar-thumb {
+    background: var(--surface2);
+    border-radius: 2px;
+}
+
+/* ── Config pane ── */
+.config-pane {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.config-pane::-webkit-scrollbar {
+    width: 4px;
+}
+
+.config-pane::-webkit-scrollbar-thumb {
+    background: var(--surface2);
+    border-radius: 2px;
+}
+
+/* ── Preview pane ── */
+.preview-pane {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.preview-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding-right: 14px;
+    border-right: 1px solid var(--border);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 500;
+}
+
+.preview-header-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
+
+.preview-stage {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        radial-gradient(ellipse 60% 50% at 50% 50%,
+            rgba(79, 142, 247, 0.04) 0%,
+            transparent 70%),
+        repeating-linear-gradient(0deg,
+            transparent,
+            transparent 19px,
+            rgba(255, 255, 255, 0.025) 19px,
+            rgba(255, 255, 255, 0.025) 20px),
+        repeating-linear-gradient(90deg,
+            transparent,
+            transparent 19px,
+            rgba(255, 255, 255, 0.025) 19px,
+            rgba(255, 255, 255, 0.025) 20px);
+    padding: 8px 12px;
+    border-radius: var(--r);
+    position: relative;
+    overflow: hidden;
+}
+
+.preview-canvas-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.preview-label {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+#previewCanvas {
+    display: block;
+    border-radius: 0;
+    /* border-radius applied dynamically */
+    /* image-rendering: crisp-edges; */
+    image-rendering: crisp-edges;
+}
+
+.preview-footer {
+    flex: 1;
+    padding-left: 14px;
+    border-left: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    font-size: 9px;
+    color: var(--text-dim);
+}
+
+.preview-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.preview-stat-val {
+    color: var(--text-mid);
+    font-size: 10px;
+}
+
+/* ── Sections ── */
+.section {
+    font-family: var(--sans);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+}
+
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 125ms ease;
+}
+
+.section.open .section-head {
+    border-bottom-color: var(--border);
+}
+
+.section-head:hover {
+    background: var(--surface2);
+}
+
+.section-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-mid);
+}
+
+.section-chevron {
+    color: var(--text-dim);
+    font-size: 12px;
+    transition: transform 0.2s;
+    line-height: 1;
+}
+
+.section.open .section-chevron {
+    transform: rotate(90deg);
+}
+
+.section-body {
+    display: none;
+    padding: 10px;
+}
+
+.section.open .section-body {
+    display: block;
+}
+
+/* ── Control rows ── */
+.ctrl {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+    gap: 8px;
+}
+
+.ctrl+.ctrl {
+    border-top: 1px solid var(--border);
+}
+
+.ctrl-label {
+    color: var(--text-mid);
+    font-size: 13px;
+    flex-shrink: 0;
+    min-width: 90px;
+}
+
+.ctrl-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Range inputs */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100px;
+    height: 16px;
+    /* Container tall enough to hold the 11px thumb */
+    background: transparent;
+    outline: none;
+    cursor: pointer;
+    margin: 0;
+}
+
+/* WebKit / Chromium Track */
+input[type="range"]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 3px;
+    background: var(--surface2);
+    border-radius: 2px;
+}
+
+/* WebKit / Chromium Thumb */
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 1.5px solid var(--bg);
+    cursor: pointer;
+    margin-top: -4px;
+    /* (3px track - 11px thumb) / 2 = centers the thumb */
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+/* Firefox Track */
+input[type="range"]::-moz-range-track {
+    width: 100%;
+    height: 3px;
+    background: var(--surface2);
+    border-radius: 2px;
+}
+
+/* Firefox Thumb */
+input[type="range"]::-moz-range-thumb {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 1.5px solid var(--bg);
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+/* Value display */
+.val {
+    font-size: 11px;
+    color: var(--text-dim);
+    width: 30px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Buttons section ── */
+#buttonList {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.btn-item {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+    transition: border-color 0.15s;
+}
+
+.btn-item:hover {
+    border-color: var(--border-hi);
+}
+
+.btn-item-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    cursor: pointer;
+    background: var(--surface2);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.btn-item-head:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.btn-item-label {
+    font-size: 13px;
+    color: var(--text-mid);
+    font-weight: 500;
+}
+
+.btn-item-controls {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.btn-item-remove {
+    font-size: 13px;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    line-height: 1;
+    transition:
+        color 125ms ease,
+        background 125ms ease;
+}
+
+.btn-item-remove:hover {
+    color: var(--danger);
+    background: rgba(248, 113, 113, 0.1);
+}
+
+.btn-item-body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* input[type="text"], */
+textarea,
+select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: var(--mono);
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+input[type="text"]:focus,
+textarea:focus,
+select:focus {
+    border-color: var(--accent);
+}
+
+textarea {
+    height: 44px;
+    resize: vertical;
+    line-height: 1.4;
+}
+
+select {
+    cursor: pointer;
+}
+
+select option {
+    background: #1a1d23;
+}
+
+.field-label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+    display: block;
+}
+
+.checkbox-group {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.cb-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--text-mid);
+    cursor: pointer;
+}
+
+.cb-label:hover {
+    color: var(--text);
+}
+
+input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+/* ── Action buttons ── */
+.add-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.btn {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    transition:
+        background 0.15s,
+        border-color 0.15s;
+    font-weight: 400;
+    text-align: center;
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-mid);
+}
+
+.btn-ghost:hover {
+    background: var(--surface2);
+    color: var(--text);
+    border-color: var(--border-hi);
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: transparent;
+    font-weight: 500;
+}
+
+.btn-primary:hover {
+    background: #6fa1f9;
+}
+
+/* ── Bottom bar ── */
+.bottombar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    gap: 10px;
+}
+
+#status {
+    font-size: 10px;
+    color: var(--success);
+    opacity: 0;
+    transition: opacity 0.3s;
+    letter-spacing: 0.06em;
+}
+
+#save {
+    min-width: 120px;
+    padding: 8px 16px;
+}
+
+/* ── Preset picker ── */
+.preset-picker {
+    background: var(--surface2);
+    border: 1px solid var(--border-hi);
+    border-radius: var(--r);
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.preset-row {
+    display: block;
+    width: 100%;
+    padding: 7px 10px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 11px;
+    font-family: var(--mono);
+    text-align: left;
+    cursor: pointer;
+}
+
+.preset-row:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.preset-row--added {
+    color: var(--text-dim);
+    cursor: default;
+}
+
+/* Context toggle tabs */
+.ctx-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.ctx-tab {
+    padding: 4px 10px;
+    font-size: 9px;
+    font-family: var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition:
+        color 0.15s,
+        background 0.15s;
+}
+
+.ctx-tab.active {
+    background: var(--accent-lo);
+    color: var(--accent);
+}
+
+.ctx-tab:hover:not(.active) {
+    background: var(--surface2);
+    color: var(--text-mid);
+}
+</file>
 
 <file path="test/build-manifest.test.js">
 const assert = require('node:assert/strict')
@@ -208,6 +869,15 @@ function minifyAndCopyHtml() {
   fs.writeFileSync(path.join(distDir, "popup.html"), out);
 }
 
+function minifyAndCopyCss() {
+  const src = fs.readFileSync("popup.css", "utf8");
+  const out = src
+    .replace(/\n\s+/g, "")
+    .replace(/\s+/g, "")
+    .replace(/\/\*.*?\*\//g, "");
+  fs.writeFileSync(path.join(distDir, "popup.css"), out);
+}
+
 function prepareDist() {
   if (fs.existsSync(distDir)) fs.rmSync(distDir, { recursive: true });
   fs.mkdirSync(distDir);
@@ -307,6 +977,12 @@ function watchStaticFiles() {
     pushReload("popup.html");
   });
 
+  fs.watch("popup.css", () => {
+    console.log("[dev] popup.css changed");
+    minifyAndCopyHtml();
+    pushReload("popup.css");
+  });
+
   if (fs.existsSync("assets")) {
     fs.watch("assets", () => {
       copyAssets();
@@ -320,6 +996,7 @@ async function runDev() {
   prepareDist();
   copyAssets();
   minifyAndCopyHtml();
+  minifyAndCopyCss();
   writeReloadShim();
   writeDevManifest();
 
@@ -472,957 +1149,211 @@ module.exports = { createManifest };
 <file path="popup.html">
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Toast Preferences</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      :root {
-        --bg: #0a0b0d;
-        --surface: #111316;
-        --surface2: #191c21;
-        --border: rgba(255, 255, 255, 0.07);
-        --border-hi: rgba(255, 255, 255, 0.14);
-        --accent: #4f8ef7;
-        --accent-lo: rgba(79, 142, 247, 0.12);
-        --accent-mid: rgba(79, 142, 247, 0.22);
-        --text: #e8eaed;
-        --text-dim: #6b7280;
-        --text-mid: #9ca3af;
-        --danger: #f87171;
-        --success: #34d399;
-        --sans: "Atkinson Hyperlegible", "Aptos", sans-serif;
-        --mono: "AtkynsonMono Nerd Font", "Aptos Mono", monospace;
-        --r: 6px;
-      }
 
-      ::-webkit-scrollbar {
-        display: none;
-      }
-
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-
-      body {
-        width: 700px;
-        height: 600px;
-        background: var(--bg);
-        color: var(--text);
-        font-family: var(--mono);
-        font-size: 12px;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-      }
-
-      #previewCanvas {
-        border: 1px solid #ffffff16;
-      }
-
-      /* ── Top bar ── */
-      .topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 12px 16px 10px;
-        border-bottom: 1px solid var(--border);
-        background: var(--surface);
-        flex-shrink: 0;
-      }
-
-      .topbar-brand {
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: var(--text-mid);
-      }
-
-      .topbar-brand strong {
-        color: var(--text);
-        font-style: italic;
-        text-decoration: line-through;
-        opacity: 0.35;
-        margin: 0 5px;
-      }
-
-      .topbar-brand em {
-        color: var(--text);
-        font-style: normal;
-        text-decoration: double;
-        font-weight: 500;
-      }
-
-      .topbar-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      /* ── Main layout ── */
-      .layout {
-        flex: 1;
-        overflow-y: auto;
-        scrollbar-width: thin;
-        scrollbar-color: var(--surface2) transparent;
-      }
-
-      /* Moved scrollbar styling to apply to .layout */
-      .layout::-webkit-scrollbar {
-        width: 4px;
-      }
-
-      .layout::-webkit-scrollbar-thumb {
-        background: var(--surface2);
-        border-radius: 2px;
-      }
-
-      /* ── Config pane ── */
-      .config-pane {
-        padding: 12px 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .config-pane::-webkit-scrollbar {
-        width: 4px;
-      }
-
-      .config-pane::-webkit-scrollbar-thumb {
-        background: var(--surface2);
-        border-radius: 2px;
-      }
-
-      /* ── Preview pane ── */
-      .preview-pane {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 8px 14px;
-        background: var(--surface);
-        border-top: 1px solid var(--border);
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-      }
-
-      .preview-header {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-shrink: 0;
-        padding-right: 14px;
-        border-right: 1px solid var(--border);
-        font-size: 10px;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: var(--text-dim);
-        font-weight: 500;
-      }
-
-      .preview-header-dot {
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--accent);
-        box-shadow: 0 0 6px var(--accent);
-        animation: pulse-dot 2s ease-in-out infinite;
-      }
-
-      @keyframes pulse-dot {
-        0%,
-        100% {
-          opacity: 1;
-        }
-
-        50% {
-          opacity: 0.3;
-        }
-      }
-
-      .preview-stage {
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background:
-          radial-gradient(
-            ellipse 60% 50% at 50% 50%,
-            rgba(79, 142, 247, 0.04) 0%,
-            transparent 70%
-          ),
-          repeating-linear-gradient(
-            0deg,
-            transparent,
-            transparent 19px,
-            rgba(255, 255, 255, 0.025) 19px,
-            rgba(255, 255, 255, 0.025) 20px
-          ),
-          repeating-linear-gradient(
-            90deg,
-            transparent,
-            transparent 19px,
-            rgba(255, 255, 255, 0.025) 19px,
-            rgba(255, 255, 255, 0.025) 20px
-          );
-        padding: 8px 12px;
-        border-radius: var(--r);
-        position: relative;
-        overflow: hidden;
-      }
-
-      .preview-canvas-wrap {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-
-      .preview-label {
-        font-size: 9px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--text-dim);
-      }
-
-      #previewCanvas {
-        display: block;
-        border-radius: 0;
-        /* border-radius applied dynamically */
-        /* image-rendering: crisp-edges; */
-        image-rendering: crisp-edges;
-      }
-
-      .preview-footer {
-        flex: 1;
-        padding-left: 14px;
-        border-left: 1px solid var(--border);
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 8px;
-        font-size: 9px;
-        color: var(--text-dim);
-      }
-
-      .preview-stat {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-
-      .preview-stat-val {
-        color: var(--text-mid);
-        font-size: 10px;
-      }
-
-      /* ── Sections ── */
-      .section {
-        font-family: var(--sans);
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--r);
-        overflow: hidden;
-      }
-
-      .section-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 7px 10px;
-        cursor: pointer;
-        -webkit-user-select: none;
-        user-select: none;
-        border-bottom: 1px solid transparent;
-        transition: border-color 125ms ease;
-      }
-
-      .section.open .section-head {
-        border-bottom-color: var(--border);
-      }
-
-      .section-head:hover {
-        background: var(--surface2);
-      }
-
-      .section-title {
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.15em;
-        text-transform: uppercase;
-        color: var(--text-mid);
-      }
-
-      .section-chevron {
-        color: var(--text-dim);
-        font-size: 12px;
-        transition: transform 0.2s;
-        line-height: 1;
-      }
-
-      .section.open .section-chevron {
-        transform: rotate(90deg);
-      }
-
-      .section-body {
-        display: none;
-        padding: 10px;
-      }
-
-      .section.open .section-body {
-        display: block;
-      }
-
-      /* ── Control rows ── */
-      .ctrl {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 4px 0;
-        gap: 8px;
-      }
-
-      .ctrl + .ctrl {
-        border-top: 1px solid var(--border);
-      }
-
-      .ctrl-label {
-        color: var(--text-mid);
-        font-size: 13px;
-        flex-shrink: 0;
-        min-width: 90px;
-      }
-
-      .ctrl-right {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      /* Range inputs */
-      input[type="range"] {
-        -webkit-appearance: none;
-        appearance: none;
-        width: 100px;
-        height: 3px;
-        border-radius: 2px;
-        background: var(--surface2);
-        outline: none;
-        cursor: pointer;
-      }
-
-      input[type="range"]::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        appearance: none;
-        width: 11px;
-        height: 11px;
-        border-radius: 50%;
-        background: var(--accent);
-        border: 1.5px solid var(--bg);
-        cursor: pointer;
-        transition:
-          transform 0.1s,
-          box-shadow 0.1s;
-      }
-
-      input[type="range"]::-webkit-slider-thumb:hover {
-        transform: scale(1.25);
-        box-shadow: 0 0 0 3px var(--accent-lo);
-      }
-
-      /* Color inputs */
-      input[type="color"] {
-        -webkit-appearance: none;
-        appearance: none;
-        width: 24px;
-        height: 24px;
-        border: 1px solid var(--border-hi);
-        border-radius: 4px;
-        background: none;
-        cursor: pointer;
-        padding: 0;
-      }
-
-      input[type="color"]::-webkit-color-swatch-wrapper {
-        padding: 2px;
-      }
-
-      input[type="color"]::-webkit-color-swatch {
-        border: none;
-        border-radius: 2px;
-      }
-
-      /* Value display */
-      .val {
-        font-size: 11px;
-        color: var(--text-dim);
-        width: 30px;
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-      }
-
-      /* ── Buttons section ── */
-      #buttonList {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-bottom: 8px;
-      }
-
-      .btn-item {
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid var(--border);
-        border-radius: var(--r);
-        overflow: hidden;
-        transition: border-color 0.15s;
-      }
-
-      .btn-item:hover {
-        border-color: var(--border-hi);
-      }
-
-      .btn-item-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 6px 8px;
-        cursor: pointer;
-        background: var(--surface2);
-        -webkit-user-select: none;
-        user-select: none;
-      }
-
-      .btn-item-head:hover {
-        background: rgba(255, 255, 255, 0.05);
-      }
-
-      .btn-item-label {
-        font-size: 13px;
-        color: var(--text-mid);
-        font-weight: 500;
-      }
-
-      .btn-item-controls {
-        display: flex;
-        gap: 4px;
-        align-items: center;
-      }
-
-      .btn-item-remove {
-        font-size: 13px;
-        color: var(--text-dim);
-        cursor: pointer;
-        padding: 2px 4px;
-        border-radius: 3px;
-        line-height: 1;
-        transition:
-          color 125ms ease,
-          background 125ms ease;
-      }
-
-      .btn-item-remove:hover {
-        color: var(--danger);
-        background: rgba(248, 113, 113, 0.1);
-      }
-
-      .btn-item-body {
-        padding: 8px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-
-      input[type="text"],
-      textarea,
-      select {
-        width: 100%;
-        background: var(--bg);
-        border: 1px solid var(--border);
-        color: var(--text);
-        padding: 5px 7px;
-        border-radius: 4px;
-        font-size: 11px;
-        font-family: var(--mono);
-        outline: none;
-        transition: border-color 0.15s;
-      }
-
-      input[type="text"]:focus,
-      textarea:focus,
-      select:focus {
-        border-color: var(--accent);
-      }
-
-      textarea {
-        height: 44px;
-        resize: vertical;
-        line-height: 1.4;
-      }
-
-      select {
-        cursor: pointer;
-      }
-
-      select option {
-        background: #1a1d23;
-      }
-
-      .field-label {
-        font-size: 10px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--text-dim);
-        margin-bottom: 2px;
-        display: block;
-      }
-
-      .checkbox-group {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-      }
-
-      .cb-label {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 10px;
-        color: var(--text-mid);
-        cursor: pointer;
-      }
-
-      .cb-label:hover {
-        color: var(--text);
-      }
-
-      input[type="checkbox"] {
-        accent-color: var(--accent);
-        cursor: pointer;
-      }
-
-      /* ── Action buttons ── */
-      .add-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px;
-      }
-
-      .btn {
-        padding: 7px 10px;
-        border: 1px solid var(--border);
-        border-radius: var(--r);
-        font-family: var(--mono);
-        font-size: 11px;
-        cursor: pointer;
-        transition:
-          background 0.15s,
-          border-color 0.15s;
-        font-weight: 400;
-        text-align: center;
-      }
-
-      .btn-ghost {
-        background: transparent;
-        color: var(--text-mid);
-      }
-
-      .btn-ghost:hover {
-        background: var(--surface2);
-        color: var(--text);
-        border-color: var(--border-hi);
-      }
-
-      .btn-primary {
-        background: var(--accent);
-        color: #fff;
-        border-color: transparent;
-        font-weight: 500;
-      }
-
-      .btn-primary:hover {
-        background: #6fa1f9;
-      }
-
-      /* ── Bottom bar ── */
-      .bottombar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 10px 16px;
-        border-top: 1px solid var(--border);
-        background: var(--surface);
-        flex-shrink: 0;
-        gap: 10px;
-      }
-
-      #status {
-        font-size: 10px;
-        color: var(--success);
-        opacity: 0;
-        transition: opacity 0.3s;
-        letter-spacing: 0.06em;
-      }
-
-      #save {
-        min-width: 120px;
-        padding: 8px 16px;
-      }
-
-      /* ── Preset picker ── */
-      .preset-picker {
-        background: var(--surface2);
-        border: 1px solid var(--border-hi);
-        border-radius: var(--r);
-        overflow: hidden;
-        margin-top: 4px;
-      }
-
-      .preset-row {
-        display: block;
-        width: 100%;
-        padding: 7px 10px;
-        background: none;
-        border: none;
-        color: var(--text);
-        font-size: 11px;
-        font-family: var(--mono);
-        text-align: left;
-        cursor: pointer;
-      }
-
-      .preset-row:hover:not(:disabled) {
-        background: rgba(255, 255, 255, 0.06);
-      }
-
-      .preset-row--added {
-        color: var(--text-dim);
-        cursor: default;
-      }
-
-      /* Context toggle tabs */
-      .ctx-tabs {
-        display: flex;
-        gap: 0;
-        background: var(--bg);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        overflow: hidden;
-        margin-bottom: 4px;
-      }
-
-      .ctx-tab {
-        padding: 4px 10px;
-        font-size: 9px;
-        font-family: var(--mono);
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        background: none;
-        border: none;
-        color: var(--text-dim);
-        cursor: pointer;
-        transition:
-          color 0.15s,
-          background 0.15s;
-      }
-
-      .ctx-tab.active {
-        background: var(--accent-lo);
-        color: var(--accent);
-      }
-
-      .ctx-tab:hover:not(.active) {
-        background: var(--surface2);
-        color: var(--text-mid);
-      }
-    </style>
-  </head>
-
-  <body>
-    <!-- Top bar -->
-    <div class="topbar">
-      <span class="topbar-brand">
-        Where The<strong>Sausage</strong><em>Toast</em> Is Made
-      </span>
-      <div class="topbar-actions">
-        <span id="status">saved.</span>
-      </div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Toast Preferences</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap"
+    rel="stylesheet" />
+  <link href="popup.css" type="text/css" rel="stylesheet" />
+</head>
+
+<body>
+  <!-- Top bar -->
+  <div class="topbar">
+    <span class="topbar-brand">
+      Where The<strong>Sausage</strong><em>Toast</em> Is Made
+    </span>
+    <div class="topbar-actions">
+      <span id="status">saved.</span>
     </div>
+  </div>
 
-    <!-- Main layout -->
-    <div class="layout">
-      <!-- Config pane -->
-      <div class="config-pane">
-        <!-- Visual Style (open by default) -->
-        <div class="section open" id="sec-visual">
-          <div class="section-head" data-section="sec-visual">
-            <span class="section-title">Visual Style</span>
-            <span class="section-chevron">›</span>
+  <!-- Main layout -->
+  <div class="layout">
+    <!-- Config pane -->
+    <div class="config-pane">
+      <!-- Visual Style (open by default) -->
+      <div class="section open" id="sec-visual">
+        <div class="section-head" data-section="sec-visual">
+          <span class="section-title">Visual Style</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div class="ctrl">
+            <span class="ctrl-label">Background</span>
+            <div class="ctrl-right">
+              <input type="color" id="bgColor" class="style-input" data-key="bgColor" />
+            </div>
           </div>
-          <div class="section-body">
-            <div class="ctrl">
-              <span class="ctrl-label">Background</span>
-              <div class="ctrl-right">
-                <input
-                  type="color"
-                  id="bgColor"
-                  class="style-input"
-                  data-key="bgColor"
-                />
-              </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Accent</span>
+            <div class="ctrl-right">
+              <input type="color" id="hoverColor" class="style-input" data-key="hoverColor" />
             </div>
-            <div class="ctrl">
-              <span class="ctrl-label">Accent</span>
-              <div class="ctrl-right">
-                <input
-                  type="color"
-                  id="hoverColor"
-                  class="style-input"
-                  data-key="hoverColor"
-                />
-              </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Opacity</span>
+            <div class="ctrl-right">
+              <input type="range" id="bgOpacity" class="style-input" data-key="bgOpacity" min="0.1" max="1"
+                step="0.01" />
+              <span class="val" id="val-bgOpacity">0.75</span>
             </div>
-            <div class="ctrl">
-              <span class="ctrl-label">Opacity</span>
-              <div class="ctrl-right">
-                <input
-                  type="range"
-                  id="bgOpacity"
-                  class="style-input"
-                  data-key="bgOpacity"
-                  min="0.1"
-                  max="1"
-                  step="0.01"
-                />
-                <span class="val" id="val-bgOpacity">0.75</span>
-              </div>
-            </div>
-            <div class="ctrl">
-              <span class="ctrl-label">Border Radius</span>
-              <div class="ctrl-right">
-                <input
-                  type="range"
-                  id="borderRadius"
-                  class="style-input"
-                  data-key="borderRadius"
-                  min="0"
-                  max="24"
-                  step="1"
-                />
-                <span class="val" id="val-borderRadius">13</span>
-              </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Border Radius</span>
+            <div class="ctrl-right">
+              <input type="range" id="borderRadius" class="style-input" data-key="borderRadius" min="0" max="24"
+                step="1" />
+              <span class="val" id="val-borderRadius">13</span>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Layout & Spacing -->
-        <div class="section open" id="sec-layout">
-          <div class="section-head" data-section="sec-layout">
-            <span class="section-title">Layout & Spacing</span>
-            <span class="section-chevron">›</span>
+      <!-- Layout & Spacing -->
+      <div class="section open" id="sec-layout">
+        <div class="section-head" data-section="sec-layout">
+          <span class="section-title">Layout & Spacing</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div class="ctrl">
+            <span class="ctrl-label">Icon Size</span>
+            <div class="ctrl-right">
+              <input type="range" id="iconSize" class="style-input" data-key="iconSize" min="10" max="32" step="1" />
+              <span class="val" id="val-iconSize">18</span>
+            </div>
           </div>
-          <div class="section-body">
-            <div class="ctrl">
-              <span class="ctrl-label">Icon Size</span>
-              <div class="ctrl-right">
-                <input
-                  type="range"
-                  id="iconSize"
-                  class="style-input"
-                  data-key="iconSize"
-                  min="10"
-                  max="32"
-                  step="1"
-                />
-                <span class="val" id="val-iconSize">18</span>
-              </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Icon Padding</span>
+            <div class="ctrl-right">
+              <input type="range" id="iconPadding" class="style-input" data-key="iconPadding" min="2" max="16"
+                step="1" />
+              <span class="val" id="val-iconPadding">5</span>
             </div>
-            <div class="ctrl">
-              <span class="ctrl-label">Icon Padding</span>
-              <div class="ctrl-right">
-                <input
-                  type="range"
-                  id="iconPadding"
-                  class="style-input"
-                  data-key="iconPadding"
-                  min="2"
-                  max="16"
-                  step="1"
-                />
-                <span class="val" id="val-iconPadding">5</span>
-              </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Btn Spacing</span>
+            <div class="ctrl-right">
+              <input type="range" id="buttonSpacing" class="style-input" data-key="buttonSpacing" min="0" max="16"
+                step="1" />
+              <span class="val" id="val-buttonSpacing">4</span>
             </div>
-            <div class="ctrl">
-              <span class="ctrl-label">Btn Spacing</span>
-              <div class="ctrl-right">
-                <input
-                  type="range"
-                  id="buttonSpacing"
-                  class="style-input"
-                  data-key="buttonSpacing"
-                  min="0"
-                  max="16"
-                  step="1"
-                />
-                <span class="val" id="val-buttonSpacing">4</span>
-              </div>
-            </div>
-            <div class="ctrl">
-              <span class="ctrl-label">Wall Padding</span>
-              <div class="ctrl-right">
-                <input
-                  type="range"
-                  id="padding"
-                  class="style-input"
-                  data-key="padding"
-                  min="2"
-                  max="20"
-                  step="1"
-                />
-                <span class="val" id="val-padding">6</span>
-              </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Wall Padding</span>
+            <div class="ctrl-right">
+              <input type="range" id="padding" class="style-input" data-key="padding" min="2" max="20" step="1" />
+              <span class="val" id="val-padding">6</span>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Animation & Interaction -->
-        <div class="section" id="sec-anim">
-          <div class="section-head" data-section="sec-anim">
-            <span class="section-title">Animation & Interaction</span>
-            <span class="section-chevron">›</span>
+      <!-- Animation & Interaction -->
+      <div class="section" id="sec-anim">
+        <div class="section-head" data-section="sec-anim">
+          <span class="section-title">Animation & Interaction</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div class="ctrl">
+            <span class="ctrl-label">Hover Scale</span>
+            <div class="ctrl-right">
+              <input type="range" id="hoverScale" class="style-input" data-key="hoverScale" min="1.0" max="1.5"
+                step="0.01" />
+              <span class="val" id="val-hoverScale">1.15</span>
+            </div>
           </div>
-          <div class="section-body">
-            <div class="ctrl">
-              <span class="ctrl-label">Hover Scale</span>
-              <div class="ctrl-right">
-                <input
-                  type="range"
-                  id="hoverScale"
-                  class="style-input"
-                  data-key="hoverScale"
-                  min="1.0"
-                  max="1.5"
-                  step="0.01"
-                />
-                <span class="val" id="val-hoverScale">1.15</span>
-              </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Active Click</span>
+            <div class="ctrl-right">
+              <input type="range" id="activeScale" class="style-input" data-key="activeScale" min="0.5" max="1.0"
+                step="0.01" />
+              <span class="val" id="val-activeScale">0.9</span>
             </div>
-            <div class="ctrl">
-              <span class="ctrl-label">Active Click</span>
-              <div class="ctrl-right">
-                <input
-                  type="range"
-                  id="activeScale"
-                  class="style-input"
-                  data-key="activeScale"
-                  min="0.5"
-                  max="1.0"
-                  step="0.01"
-                />
-                <span class="val" id="val-activeScale">0.9</span>
-              </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Icon Lift</span>
+            <div class="ctrl-right">
+              <input type="range" id="iconLift" class="style-input" data-key="iconLift" min="0" max="12" step="1" />
+              <span class="val" id="val-iconLift">3</span>
             </div>
-            <div class="ctrl">
-              <span class="ctrl-label">Icon Lift</span>
-              <div class="ctrl-right">
-                <input
-                  type="range"
-                  id="iconLift"
-                  class="style-input"
-                  data-key="iconLift"
-                  min="0"
-                  max="12"
-                  step="1"
-                />
-                <span class="val" id="val-iconLift">3</span>
-              </div>
-            </div>
-            <div class="ctrl">
-              <span class="ctrl-label">Hover Opacity</span>
-              <div class="ctrl-right">
-                <input
-                  type="range"
-                  id="hoverOpacity"
-                  class="style-input"
-                  data-key="hoverOpacity"
-                  min="0.05"
-                  max="1"
-                  step="0.01"
-                />
-                <span class="val" id="val-hoverOpacity">0.2</span>
-              </div>
+          </div>
+          <div class="ctrl">
+            <span class="ctrl-label">Hover Opacity</span>
+            <div class="ctrl-right">
+              <input type="range" id="hoverOpacity" class="style-input" data-key="hoverOpacity" min="0.05" max="1"
+                step="0.01" />
+              <span class="val" id="val-hoverOpacity">0.2</span>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Actions & Links -->
-        <div class="section open" id="sec-actions">
-          <div class="section-head" data-section="sec-actions">
-            <span class="section-title">Actions & Links</span>
-            <span class="section-chevron">›</span>
-          </div>
-          <div class="section-body">
-            <div id="buttonList"></div>
-            <div class="add-row">
-              <button id="addBtn" class="btn btn-ghost">+ Action</button>
-              <button id="addImageSearchBtn" class="btn btn-ghost">
-                + Image Search
-              </button>
-            </div>
+      <!-- Actions & Links -->
+      <div class="section open" id="sec-actions">
+        <div class="section-head" data-section="sec-actions">
+          <span class="section-title">Actions & Links</span>
+          <span class="section-chevron">›</span>
+        </div>
+        <div class="section-body">
+          <div id="buttonList"></div>
+          <div class="add-row">
+            <button id="addBtn" class="btn btn-ghost">+ Action</button>
+            <button id="addImageSearchBtn" class="btn btn-ghost">
+              + Image Search
+            </button>
           </div>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Preview pane (pinned above footer) -->
-    <div class="preview-pane">
-      <div class="preview-header">
-        <span>Live Preview</span>
-        <div class="preview-header-dot"></div>
-      </div>
-      <div class="preview-stage">
-        <div class="preview-canvas-wrap">
-          <canvas id="previewCanvas"></canvas>
-          <span class="preview-label" id="previewDims">— × —</span>
-        </div>
-      </div>
-      <div class="preview-footer">
-        <div class="preview-stat">
-          <span>buttons</span>
-          <span class="preview-stat-val" id="statBtnCount">0</span>
-        </div>
-        <div class="preview-stat">
-          <span>icon px</span>
-          <span class="preview-stat-val" id="statIconPx">—</span>
-        </div>
-        <div class="preview-stat">
-          <span>bg alpha</span>
-          <span class="preview-stat-val" id="statBgAlpha">—</span>
-        </div>
-        <div class="preview-stat">
-          <span>radius</span>
-          <span class="preview-stat-val" id="statRadius">—</span>
-        </div>
+  <!-- Preview pane (pinned above footer) -->
+  <div class="preview-pane">
+    <div class="preview-header">
+      <span>Live Preview</span>
+      <div class="preview-header-dot"></div>
+    </div>
+    <div class="preview-stage">
+      <div class="preview-canvas-wrap">
+        <canvas id="previewCanvas"></canvas>
+        <span class="preview-label" id="previewDims">— × —</span>
       </div>
     </div>
-
-    <!-- Bottom bar -->
-    <div class="bottombar">
-      <span style="font-size: 10px; color: var(--text-dim)"
-        >Changes are reflected live. Save to apply.</span
-      >
-      <button id="save" class="btn btn-primary">Save Changes</button>
+    <div class="preview-footer">
+      <div class="preview-stat">
+        <span>buttons</span>
+        <span class="preview-stat-val" id="statBtnCount">0</span>
+      </div>
+      <div class="preview-stat">
+        <span>icon px</span>
+        <span class="preview-stat-val" id="statIconPx">—</span>
+      </div>
+      <div class="preview-stat">
+        <span>bg alpha</span>
+        <span class="preview-stat-val" id="statBgAlpha">—</span>
+      </div>
+      <div class="preview-stat">
+        <span>radius</span>
+        <span class="preview-stat-val" id="statRadius">—</span>
+      </div>
     </div>
+  </div>
 
-    <script src="popup.js"></script>
-  </body>
+  <!-- Bottom bar -->
+  <div class="bottombar">
+    <span style="font-size: 10px; color: var(--text-dim)">Changes are reflected live. Save to apply.</span>
+    <button id="save" class="btn btn-primary">Save Changes</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
 </html>
 </file>
 
@@ -1457,11 +1388,11 @@ document.addEventListener('DOMContentLoaded', () => {
       bgOpacity: 0.75,
       hoverColor: '#696969',
       hoverOpacity: 0.33,
-      borderRadius: 7,
+      borderRadius: 9,
+      padding: 3,
       iconSize: 16,
-      iconPadding: 5,
-      buttonSpacing: 6,
-      padding: 6,
+      iconPadding: 4,
+      buttonSpacing: 12,
       hoverScale: 1.15,
       activeScale: 0.9,
       iconLift: 2
@@ -1480,7 +1411,7 @@ document.addEventListener('DOMContentLoaded', () => {
         action: 'markdown',
         markdownSource: 'selection',
         contexts: ['text'],
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 32 32"><path d="M0 0h32v32H0z" fill="none"/><path fill="#d5d5d5" d="M2.875 6C1.32 6 0 7.254 0 8.813v14.374C0 24.747 1.32 26 2.875 26h26.25C30.68 26 32 24.746 32 23.187V8.813C32 7.255 30.68 6 29.125 6zm0 2h26.25c.516 0 .875.383.875.813v14.374c0 .43-.36.813-.875.813H2.875C2.359 24 2 23.617 2 23.187V8.813c0-.43.36-.812.875-.812zM5 11v10h3v-6.656l3 3.969l3-3.97V21h3V11h-3l-3 4l-3-4zm17 0v5h-3l4.5 5l4.5-5h-3v-5z"/></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 16 16"><path fill="#d5d5d5" d="M14.85 3c.63 0 1.15.52 1.14 1.15v7.7c0 .63-.51 1.15-1.15 1.15H1.15C.52 13 0 12.48 0 11.84V4.15C0 3.52.52 3 1.15 3ZM9 11V5H7L5.5 7L4 5H2v6h2V8l1.5 1.92L7 8v3Zm2.99.5L14.5 8H13V5h-2v3H9.5Z"/></svg>'
       },
       {
         id: 'google-text',
@@ -2124,802 +2055,802 @@ document.addEventListener('DOMContentLoaded', () => {
 import TurndownService from 'turndown'
 import { gfm } from 'turndown-plugin-gfm'
 
-// content.js - Toast Selection Popup (Hybrid DOM + Canvas)
-; (function () {
-  'use strict'
-  // --- Global State ---
-  let hostEl, shadow, toastEl, canvas, ctx
-  let isAwake = false
-  let hoverTimeout = null
-  let currentSelection = ''
-  let selectionRange = null
-  let isVisible = false
-  let animationId = null
-  let selectionRafId = null  // fix mouse click handling
-  let buttons = []
-  let loadedIcons = {}
-  let iconsReady = false
-  let isMouseDown = false
-  // Context: 'text' | 'image'
-  let currentContext = 'text'
-  let imageContext = { src: null, resolvedUrl: null, isAccessible: true }
-  let hoveredImage = null // <img> element the cursor is currently over
-  // Animation State
-  const animState = {
-    buttonHovers: [],
-    buttonActive: [],
-    opacity: 0,
-    hoveredButtonIndex: -1,
-    scale: 0.8
-  }
-  const springs = {
-    opacity: { val: 0, vel: 0 },
-    scale: { val: 0.8, vel: 0 },
-    buttons: []
-  }
-  const SPRING_STIFFNESS = 280
-  const SPRING_DAMPING = 22
-  const HOVER_STIFFNESS = 320
-  const HOVER_DAMPING = 26
-  let lastTime = null
-  function stepSpring(spring, target, stiffness, damping, dt) {
-    const force = -stiffness * (spring.val - target)
-    const dampen = -damping * spring.vel
-    spring.vel += (force + dampen) * dt
-    spring.val += spring.vel * dt
-    if (Math.abs(spring.val - target) < 0.001 && Math.abs(spring.vel) < 0.001) {
-      spring.val = target
-      spring.vel = 0
+  // content.js - Toast Selection Popup (Hybrid DOM + Canvas)
+  ; (function () {
+    'use strict'
+    // --- Global State ---
+    let hostEl, shadow, toastEl, canvas, ctx
+    let isAwake = false
+    let hoverTimeout = null
+    let currentSelection = ''
+    let selectionRange = null
+    let isVisible = false
+    let animationId = null
+    let selectionRafId = null  // fix mouse click handling
+    let buttons = []
+    let loadedIcons = {}
+    let iconsReady = false
+    let isMouseDown = false
+    // Context: 'text' | 'image'
+    let currentContext = 'text'
+    let imageContext = { src: null, resolvedUrl: null, isAccessible: true }
+    let hoveredImage = null // <img> element the cursor is currently over
+    // Animation State
+    const animState = {
+      buttonHovers: [],
+      buttonActive: [],
+      opacity: 0,
+      hoveredButtonIndex: -1,
+      scale: 0.8
     }
-  }
-
-  const turndownService = new TurndownService({
-    headingStyle: 'atx',
-    bulletListMarker: '-',
-    codeBlockStyle: 'fenced',
-    fence: '```',
-    hr: '---',
-    linkStyle: 'inlined'
-  })
-  turndownService.use(gfm)
-  turndownService.addRule('removeHidden', {
-    filter: el =>
-      el.style &&
-      (el.style.display === 'none' || el.style.visibility === 'hidden'),
-    replacement: () => ''
-  })
-  turndownService.addRule('lineBreak', {
-    filter: 'br',
-    replacement: () => '  \n'
-  })
-
-  // --- Default Configuration ---
-  const defaultConfig = {
-    style: {
-      bgColor: '#1b1c1d',
-      bgOpacity: 0.75,
-      hoverColor: '#696969',
-      hoverOpacity: 0.33,
-      borderRadius: 7,
-      padding: 6,
-      iconSize: 16,
-      iconPadding: 5,
-      buttonSpacing: 6,
-      hoverScale: 1.15,
-      activeScale: 0.9,
-      iconLift: 2
-    },
-    buttons: [
-      {
-        id: 'copy',
-        type: 'action',
-        action: 'copy',
-        contexts: ['text', 'image'],
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.556 13.218a2.67 2.67 0 01-3.774-3.774l2.359-2.36a2.67 2.67 0 013.628-.135m-.325-3.167a2.669 2.669 0 113.774 3.774l-2.359 2.36a2.67 2.67 0 01-3.628.135"/><path d="M10.5 3c-3.287 0-4.931 0-6.037.908a4 4 0 00-.555.554C3 5.57 3 7.212 3 10.5V13c0 3.771 0 5.657 1.172 6.828S7.229 21 11 21h2.5c3.287 0 4.931 0 6.038-.908q.304-.25.554-.554C21 18.43 21 16.788 21 13.5"/></g></svg>'
-      },
-      {
-        id: 'markdown',
-        type: 'action',
-        action: 'markdown',
-        markdownSource: 'selection',
-        contexts: ['text'],
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="#d5d5d5" d="M3 3h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1m4 12.5v-4l2 2l2-2v4h2v-7h-2l-2 2l-2-2H5v7zm11-3v-4h-2v4h-2l3 3l3-3z"/></svg>'
-      },
-      {
-        id: 'google-text',
-        type: 'link',
-        url: 'https://www.google.com/search?q=%s',
-        contexts: ['text'],
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5"><circle cx="11" cy="11" r="6"/><path stroke-linecap="round" d="M11 8a3 3 0 00-3 3m12 9l-3-3"/></g></svg>'
-      },
-      {
-        id: 'google-lens',
-        type: 'image-search',
-        url: 'https://lens.google.com/uploadbyurl?url=%s',
-        contexts: ['image'],
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M3 9V6.5A2.5 2.5 0 015.5 4H8M3 15v2.5A2.5 2.5 0 005.5 20H8m8-16h2.5A2.5 2.5 0 0121 6.5V9m0 6v2.5a2.5 2.5 0 01-2.5 2.5H16"/></g></svg>'
-      }
-    ]
-  }
-  // Strip elements that are invisible or purely presentational
-  // turndownService.addRule('removeHidden', {
-  //   filter: el =>
-  //     el.style &&
-  //     (el.style.display === 'none' || el.style.visibility === 'hidden'),
-  //   replacement: () => ''
-  // })
-
-  let config = JSON.parse(JSON.stringify(defaultConfig))
-  // --- Helpers ---
-  const hexToRgbCache = new Map()
-  function hexToRgb(hex) {
-    if (hexToRgbCache.has(hex)) return hexToRgbCache.get(hex)
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-    const rgb = result
-      ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-      }
-      : { r: 0, g: 0, b: 0 }
-    hexToRgbCache.set(hex, rgb)
-    return rgb
-  }
-  // Resolves an <img> src to an absolute URL.
-  // Returns null if the src is a data: or blob: URI (not usable by remote engines).
-  function resolveImageUrl(src) {
-    if (!src) return null
-    if (src.startsWith('data:') || src.startsWith('blob:')) return null
-    try {
-      return new URL(src, document.baseURI).href
-    } catch {
-      return null
+    const springs = {
+      opacity: { val: 0, vel: 0 },
+      scale: { val: 0.8, vel: 0 },
+      buttons: []
     }
-  }
-  // --- Initialization ---
-  function init() {
-    chrome.storage.sync.get(['canvasToastConfig'], result => {
-      applyConfig(result.canvasToastConfig)
-      setupDOM()
-      loadIcons()
-      attachEvents()
+    const SPRING_STIFFNESS = 280
+    const SPRING_DAMPING = 22
+    const HOVER_STIFFNESS = 320
+    const HOVER_DAMPING = 26
+    let lastTime = null
+    function stepSpring(spring, target, stiffness, damping, dt) {
+      const force = -stiffness * (spring.val - target)
+      const dampen = -damping * spring.vel
+      spring.vel += (force + dampen) * dt
+      spring.val += spring.vel * dt
+      if (Math.abs(spring.val - target) < 0.001 && Math.abs(spring.vel) < 0.001) {
+        spring.val = target
+        spring.vel = 0
+      }
+    }
+
+    const turndownService = new TurndownService({
+      headingStyle: 'atx',
+      bulletListMarker: '-',
+      codeBlockStyle: 'fenced',
+      fence: '```',
+      hr: '---',
+      linkStyle: 'inlined'
     })
-    chrome.storage.onChanged.addListener(changes => {
-      if (changes.canvasToastConfig) {
-        applyConfig(changes.canvasToastConfig.newValue)
+    turndownService.use(gfm)
+    turndownService.addRule('removeHidden', {
+      filter: el =>
+        el.style &&
+        (el.style.display === 'none' || el.style.visibility === 'hidden'),
+      replacement: () => ''
+    })
+    turndownService.addRule('lineBreak', {
+      filter: 'br',
+      replacement: () => '  \n'
+    })
+
+    // --- Default Configuration ---
+    const defaultConfig = {
+      style: {
+        bgColor: '#1b1c1d',
+        bgOpacity: 0.75,
+        hoverColor: '#696969',
+        hoverOpacity: 0.33,
+        borderRadius: 9,
+        padding: 3,
+        iconSize: 16,
+        buttonSpacing: 12,
+        iconPadding: 4,
+        hoverScale: 1.15,
+        activeScale: 0.9,
+        iconLift: 2
+      },
+      buttons: [
+        {
+          id: 'copy',
+          type: 'action',
+          action: 'copy',
+          contexts: ['text', 'image'],
+          icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.556 13.218a2.67 2.67 0 01-3.774-3.774l2.359-2.36a2.67 2.67 0 013.628-.135m-.325-3.167a2.669 2.669 0 113.774 3.774l-2.359 2.36a2.67 2.67 0 01-3.628.135"/><path d="M10.5 3c-3.287 0-4.931 0-6.037.908a4 4 0 00-.555.554C3 5.57 3 7.212 3 10.5V13c0 3.771 0 5.657 1.172 6.828S7.229 21 11 21h2.5c3.287 0 4.931 0 6.038-.908q.304-.25.554-.554C21 18.43 21 16.788 21 13.5"/></g></svg>'
+        },
+        {
+          id: 'markdown',
+          type: 'action',
+          action: 'markdown',
+          markdownSource: 'selection',
+          contexts: ['text'],
+          icon: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 16 16"><path fill="#d5d5d5" d="M14.85 3c.63 0 1.15.52 1.14 1.15v7.7c0 .63-.51 1.15-1.15 1.15H1.15C.52 13 0 12.48 0 11.84V4.15C0 3.52.52 3 1.15 3ZM9 11V5H7L5.5 7L4 5H2v6h2V8l1.5 1.92L7 8v3Zm2.99.5L14.5 8H13V5h-2v3H9.5Z"/></svg>'
+        },
+        {
+          id: 'google-text',
+          type: 'link',
+          url: 'https://www.google.com/search?q=%s',
+          contexts: ['text'],
+          icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5"><circle cx="11" cy="11" r="6"/><path stroke-linecap="round" d="M11 8a3 3 0 00-3 3m12 9l-3-3"/></g></svg>'
+        },
+        {
+          id: 'google-lens',
+          type: 'image-search',
+          url: 'https://lens.google.com/uploadbyurl?url=%s',
+          contexts: ['image'],
+          icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M3 9V6.5A2.5 2.5 0 015.5 4H8M3 15v2.5A2.5 2.5 0 005.5 20H8m8-16h2.5A2.5 2.5 0 0121 6.5V9m0 6v2.5a2.5 2.5 0 01-2.5 2.5H16"/></g></svg>'
+        }
+      ]
+    }
+    // Strip elements that are invisible or purely presentational
+    // turndownService.addRule('removeHidden', {
+    //   filter: el =>
+    //     el.style &&
+    //     (el.style.display === 'none' || el.style.visibility === 'hidden'),
+    //   replacement: () => ''
+    // })
+
+    let config = JSON.parse(JSON.stringify(defaultConfig))
+    // --- Helpers ---
+    const hexToRgbCache = new Map()
+    function hexToRgb(hex) {
+      if (hexToRgbCache.has(hex)) return hexToRgbCache.get(hex)
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+      const rgb = result
+        ? {
+          r: parseInt(result[1], 16),
+          g: parseInt(result[2], 16),
+          b: parseInt(result[3], 16)
+        }
+        : { r: 0, g: 0, b: 0 }
+      hexToRgbCache.set(hex, rgb)
+      return rgb
+    }
+    // Resolves an <img> src to an absolute URL.
+    // Returns null if the src is a data: or blob: URI (not usable by remote engines).
+    function resolveImageUrl(src) {
+      if (!src) return null
+      if (src.startsWith('data:') || src.startsWith('blob:')) return null
+      try {
+        return new URL(src, document.baseURI).href
+      } catch {
+        return null
+      }
+    }
+    // --- Initialization ---
+    function init() {
+      chrome.storage.sync.get(['canvasToastConfig'], result => {
+        applyConfig(result.canvasToastConfig)
+        setupDOM()
         loadIcons()
-        applyWrapperStyles()
-        if (isVisible) requestAnimationFrame(draw)
+        attachEvents()
+      })
+      chrome.storage.onChanged.addListener(changes => {
+        if (changes.canvasToastConfig) {
+          applyConfig(changes.canvasToastConfig.newValue)
+          loadIcons()
+          applyWrapperStyles()
+          if (isVisible) requestAnimationFrame(draw)
+        }
+      })
+    }
+    function applyConfig(newConfig) {
+      if (!newConfig) return
+      config.buttons =
+        newConfig.buttons && newConfig.buttons.length > 0
+          ? newConfig.buttons
+          : defaultConfig.buttons
+      if (newConfig.style) {
+        config.style = { ...defaultConfig.style, ...newConfig.style }
       }
-    })
-  }
-  function applyConfig(newConfig) {
-    if (!newConfig) return
-    config.buttons =
-      newConfig.buttons && newConfig.buttons.length > 0
-        ? newConfig.buttons
-        : defaultConfig.buttons
-    if (newConfig.style) {
-      config.style = { ...defaultConfig.style, ...newConfig.style }
     }
-  }
-  // --- DOM Setup ---
-  function setupDOM() {
-    if (hostEl && document.body.contains(hostEl)) {
-      document.body.removeChild(hostEl)
+    // --- DOM Setup ---
+    function setupDOM() {
+      if (hostEl && document.body.contains(hostEl)) {
+        document.body.removeChild(hostEl)
+      }
+
+      hostEl = document.createElement('div')
+      hostEl.id = 'toast-extension-root'
+      Object.assign(hostEl.style, {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        zIndex: '2147483647',
+        pointerEvents: 'none',
+        all: 'initial'
+      })
+
+      shadow = hostEl.attachShadow({ mode: 'closed' })
+
+      toastEl = document.createElement('div')
+      Object.assign(toastEl.style, {
+        position: 'fixed',
+        display: 'none',
+        pointerEvents: 'none',
+        backdropFilter: 'blur(16px)',
+        webkitBackdropFilter: 'blur(16px)',
+        border: '0.5px solid rgba(255, 255, 255, 0.12)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
+        transformOrigin: 'center center',
+        overflow: 'hidden',
+        willChange: 'transform, opacity',
+        opacity: '0',
+        transform: 'scale(0.7)'
+      })
+
+      canvas = document.createElement('canvas')
+      Object.assign(canvas.style, {
+        display: 'block',
+        pointerEvents: 'none'
+      })
+
+      toastEl.appendChild(canvas)
+      shadow.appendChild(toastEl)
+      document.body.appendChild(hostEl)
+      ctx = canvas.getContext('2d', { alpha: true })
+    }
+    function applyWrapperStyles() {
+      if (!toastEl) return
+      const { style } = config
+      const bgRgb = hexToRgb(style.bgColor)
+      toastEl.style.background = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`
+      toastEl.style.borderRadius = style.borderRadius + 'px'
+    }
+    // Replace attachEvents() with:
+    function attachEvents() {
+      // Text selection
+      document.addEventListener('mouseup', handleMouseUp)
+      document.addEventListener('mousedown', handleMouseDown)
+      document.addEventListener('scroll', handleScroll, { passive: true })
+
+      // Image hover tracking
+      document.addEventListener('mouseover', handleImageMouseOver)
+      document.addEventListener('mouseout', handleImageMouseOut)
+
+      // Ctrl+hover trigger
+      document.addEventListener('keydown', handleKeyDown)
+
+      // Canvas interactions
+      canvas.addEventListener('mousemove', handleMouseMove)
+      canvas.addEventListener('mousedown', handleCanvasDown)
+      canvas.addEventListener('mouseup', handleCanvasUp)
+      toastEl.addEventListener('mouseleave', () => {
+        animState.hoveredButtonIndex = -1
+        isMouseDown = false
+        wake()
+      })
+    }
+    // Replace handleImageClick with these three functions:
+
+    function handleImageMouseOver(e) {
+      if (!chrome.runtime?.id) return
+      clearTimeout(hoverTimeout)
+      hoverTimeout = setTimeout(() => {
+        if (!chrome.runtime?.id) return
+        const target = e.target
+        if (!(target instanceof HTMLImageElement)) return
+        if (hostEl && hostEl.contains(target)) return
+        hoveredImage = target
+      }, 50)
     }
 
-    hostEl = document.createElement('div')
-    hostEl.id = 'toast-extension-root'
-    Object.assign(hostEl.style, {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      zIndex: '2147483647',
-      pointerEvents: 'none',
-      all: 'initial'
-    })
-
-    shadow = hostEl.attachShadow({ mode: 'closed' })
-
-    toastEl = document.createElement('div')
-    Object.assign(toastEl.style, {
-      position: 'fixed',
-      display: 'none',
-      pointerEvents: 'none',
-      backdropFilter: 'blur(16px)',
-      webkitBackdropFilter: 'blur(16px)',
-      border: '0.5px solid rgba(255, 255, 255, 0.12)',
-      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
-      transformOrigin: 'center center',
-      overflow: 'hidden',
-      willChange: 'transform, opacity',
-      opacity: '0',
-      transform: 'scale(0.7)'
-    })
-
-    canvas = document.createElement('canvas')
-    Object.assign(canvas.style, {
-      display: 'block',
-      pointerEvents: 'none'
-    })
-
-    toastEl.appendChild(canvas)
-    shadow.appendChild(toastEl)
-    document.body.appendChild(hostEl)
-    ctx = canvas.getContext('2d', { alpha: true })
-  }
-  function applyWrapperStyles() {
-    if (!toastEl) return
-    const { style } = config
-    const bgRgb = hexToRgb(style.bgColor)
-    toastEl.style.background = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`
-    toastEl.style.borderRadius = style.borderRadius + 'px'
-  }
-  // Replace attachEvents() with:
-  function attachEvents() {
-    // Text selection
-    document.addEventListener('mouseup', handleMouseUp)
-    document.addEventListener('mousedown', handleMouseDown)
-    document.addEventListener('scroll', handleScroll, { passive: true })
-
-    // Image hover tracking
-    document.addEventListener('mouseover', handleImageMouseOver)
-    document.addEventListener('mouseout', handleImageMouseOut)
-
-    // Ctrl+hover trigger
-    document.addEventListener('keydown', handleKeyDown)
-
-    // Canvas interactions
-    canvas.addEventListener('mousemove', handleMouseMove)
-    canvas.addEventListener('mousedown', handleCanvasDown)
-    canvas.addEventListener('mouseup', handleCanvasUp)
-    toastEl.addEventListener('mouseleave', () => {
-      animState.hoveredButtonIndex = -1
-      isMouseDown = false
-      wake()
-    })
-  }
-  // Replace handleImageClick with these three functions:
-
-  function handleImageMouseOver(e) {
-    if (!chrome.runtime?.id) return
-    clearTimeout(hoverTimeout)
-    hoverTimeout = setTimeout(() => {
+    function handleImageMouseOut(e) {
       if (!chrome.runtime?.id) return
       const target = e.target
       if (!(target instanceof HTMLImageElement)) return
-      if (hostEl && hostEl.contains(target)) return
-      hoveredImage = target
-    }, 50)
-  }
-
-  function handleImageMouseOut(e) {
-    if (!chrome.runtime?.id) return
-    const target = e.target
-    if (!(target instanceof HTMLImageElement)) return
-    if (hostEl && hostEl.contains(e.relatedTarget)) return
-    if (target === hoveredImage) hoveredImage = null
-  }
-
-  function handleMouseUp(e) {
-    if (!chrome.runtime?.id) return
-    if (hostEl && hostEl.contains(e.target)) return
-    if (selectionRafId) cancelAnimationFrame(selectionRafId)
-    selectionRafId = requestAnimationFrame(() => {
-      if (!chrome.runtime?.id) return
-      selectionRafId = null
-      const sel = window.getSelection()
-      if (!sel || sel.rangeCount === 0) return
-      const text = sel.toString().trim()
-      if (text.length > 0) {
-        currentContext = 'text'
-        currentSelection = text
-        imageContext = { src: null, resolvedUrl: null, isAccessible: true }
-        try {
-          selectionRange = sel.getRangeAt(0).cloneRange()
-          const rect = selectionRange.getBoundingClientRect()
-          if (rect.width === 0 && rect.height === 0) return
-          showToast(rect)
-        } catch (err) {
-          console.error('[Toast] Range error', err)
-        }
-      } else {
-        if (!isMouseDown) hideToast()
-      }
-    })
-  }
-
-  function handleMouseDown(e) {
-    if (!chrome.runtime?.id) return
-    if (isVisible && hostEl && !hostEl.contains(e.target)) {
-      hideToast()
+      if (hostEl && hostEl.contains(e.relatedTarget)) return
+      if (target === hoveredImage) hoveredImage = null
     }
-  }
 
-  function handleMouseMove(e) {
-    if (!isVisible) return
-    const rect = canvas.getBoundingClientRect()
-    const mx = e.clientX - rect.left
-    const my = e.clientY - rect.top
-    let hoveredIndex = -1
-    buttons.forEach((btn, i) => {
-      if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
-        hoveredIndex = i
+    function handleMouseUp(e) {
+      if (!chrome.runtime?.id) return
+      if (hostEl && hostEl.contains(e.target)) return
+      if (selectionRafId) cancelAnimationFrame(selectionRafId)
+      selectionRafId = requestAnimationFrame(() => {
+        if (!chrome.runtime?.id) return
+        selectionRafId = null
+        const sel = window.getSelection()
+        if (!sel || sel.rangeCount === 0) return
+        const text = sel.toString().trim()
+        if (text.length > 0) {
+          currentContext = 'text'
+          currentSelection = text
+          imageContext = { src: null, resolvedUrl: null, isAccessible: true }
+          try {
+            selectionRange = sel.getRangeAt(0).cloneRange()
+            const rect = selectionRange.getBoundingClientRect()
+            if (rect.width === 0 && rect.height === 0) return
+            showToast(rect)
+          } catch (err) {
+            console.error('[Toast] Range error', err)
+          }
+        } else {
+          if (!isMouseDown) hideToast()
+        }
+      })
+    }
+
+    function handleMouseDown(e) {
+      if (!chrome.runtime?.id) return
+      if (isVisible && hostEl && !hostEl.contains(e.target)) {
+        hideToast()
       }
-    })
-    if (animState.hoveredButtonIndex !== hoveredIndex) {
-      animState.hoveredButtonIndex = hoveredIndex
+    }
+
+    function handleMouseMove(e) {
+      if (!isVisible) return
+      const rect = canvas.getBoundingClientRect()
+      const mx = e.clientX - rect.left
+      const my = e.clientY - rect.top
+      let hoveredIndex = -1
+      buttons.forEach((btn, i) => {
+        if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+          hoveredIndex = i
+        }
+      })
+      if (animState.hoveredButtonIndex !== hoveredIndex) {
+        animState.hoveredButtonIndex = hoveredIndex
+        wake()
+      }
+      canvas.style.cursor = hoveredIndex !== -1 ? 'pointer' : 'default'
+    }
+
+    function handleKeyDown(e) {
+      if (!chrome.runtime?.id) return
+      // Only Control, not Ctrl+C / Ctrl+V / etc.
+      if (e.key !== 'Control' || e.ctrlKey === false) return
+      if (!hoveredImage) return
+
+      const resolved = resolveImageUrl(hoveredImage.src)
+      imageContext = {
+        src: hoveredImage.src,
+        resolvedUrl: resolved,
+        isAccessible: resolved !== null
+      }
+      currentContext = 'image'
+      window.getSelection()?.removeAllRanges()
+      currentSelection = ''
+
+      const rect = hoveredImage.getBoundingClientRect()
+      showToast(rect)
+    }
+
+    function handleScroll() {
+      if (!chrome.runtime?.id) return
+      if (isVisible) hideToast()
+    }
+    // --- Toast Lifecycle ---
+    function getContextButtons() {
+      return config.buttons.filter(btn => {
+        const contexts = btn.contexts
+        const hasContext = (!contexts || contexts.length === 0) ? currentContext === 'text' : contexts.includes(currentContext)
+
+        if (!hasContext) return false
+
+        if (btn.regex && currentContext === 'text') {
+          try {
+            const rgx = new RegExp(btn.regex, 'i')
+            return rgx.test(currentSelection)
+          } catch (e) {
+            return false
+          }
+        }
+
+        return true
+      })
+    }
+
+    function showToast(rect) {
+      const { style } = config
+      const contextBtns = getContextButtons()
+      const baseBtnSize = style.iconSize + style.iconPadding * 2
+      const count = contextBtns.length
+      if (count === 0) return
+      const totalWidth = style.padding * 2 + baseBtnSize * count + style.buttonSpacing * (count - 1)
+      const totalHeight = style.padding * 2 + baseBtnSize
+      const dpr = window.devicePixelRatio || 1
+      canvas.style.width = totalWidth + 'px'
+      canvas.style.height = totalHeight + 'px'
+      canvas.width = totalWidth * dpr
+      canvas.height = totalHeight * dpr
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.scale(dpr, dpr)
+      toastEl.style.width = totalWidth + 'px'
+      toastEl.style.height = totalHeight + 'px'
+      applyWrapperStyles()
+
+      let left = rect.left + rect.width / 2 - totalWidth / 2
+      let top = currentContext === 'image' ? rect.top - totalHeight - 16 : rect.top - totalHeight - 16
+      if (top < 8) top = rect.bottom + 16
+      if (left < 10) left = 10
+      if (left + totalWidth > window.innerWidth - 10) left = window.innerWidth - totalWidth - 10
+
+      toastEl.style.left = left + 'px'
+      toastEl.style.top = top + 'px'
+      toastEl.style.display = 'block'
+      toastEl.style.pointerEvents = 'auto'
+      canvas.style.pointerEvents = 'auto'
+
+      if (!isVisible) {
+        isVisible = true
+        springs.opacity.val = 0
+        springs.opacity.vel = 0
+        springs.scale.val = 0.8
+        springs.scale.vel = 0
+        toastEl.style.opacity = '0'
+        toastEl.style.transform = 'scale(0.8)'
+      }
       wake()
     }
-    canvas.style.cursor = hoveredIndex !== -1 ? 'pointer' : 'default'
-  }
 
-  function handleKeyDown(e) {
-    if (!chrome.runtime?.id) return
-    // Only Control, not Ctrl+C / Ctrl+V / etc.
-    if (e.key !== 'Control' || e.ctrlKey === false) return
-    if (!hoveredImage) return
-
-    const resolved = resolveImageUrl(hoveredImage.src)
-    imageContext = {
-      src: hoveredImage.src,
-      resolvedUrl: resolved,
-      isAccessible: resolved !== null
+    function hideToast() {
+      isVisible = false
+      toastEl.style.pointerEvents = 'none'
+      canvas.style.pointerEvents = 'none'
+      animState.hoveredButtonIndex = -1
+      isMouseDown = false
+      wake()
     }
-    currentContext = 'image'
-    window.getSelection()?.removeAllRanges()
-    currentSelection = ''
-
-    const rect = hoveredImage.getBoundingClientRect()
-    showToast(rect)
-  }
-
-  function handleScroll() {
-    if (!chrome.runtime?.id) return
-    if (isVisible) hideToast()
-  }
-  // --- Toast Lifecycle ---
-  function getContextButtons() {
-    return config.buttons.filter(btn => {
-      const contexts = btn.contexts
-      const hasContext = (!contexts || contexts.length === 0) ? currentContext === 'text' : contexts.includes(currentContext)
-
-      if (!hasContext) return false
-
-      if (btn.regex && currentContext === 'text') {
-        try {
-          const rgx = new RegExp(btn.regex, 'i')
-          return rgx.test(currentSelection)
-        } catch (e) {
-          return false
-        }
+    // --- Animation Loop ---
+    function wake() {
+      if (!isAwake) {
+        isAwake = true
+        lastTime = null
+        if (animationId) cancelAnimationFrame(animationId)
+        animationId = requestAnimationFrame(loop)
       }
-
-      return true
-    })
-  }
-
-  function showToast(rect) {
-    const { style } = config
-    const contextBtns = getContextButtons()
-    const baseBtnSize = style.iconSize + style.iconPadding * 2
-    const count = contextBtns.length
-    if (count === 0) return
-    const totalWidth = style.padding * 2 + baseBtnSize * count + style.buttonSpacing * (count - 1)
-    const totalHeight = style.padding * 2 + baseBtnSize
-    const dpr = window.devicePixelRatio || 1
-    canvas.style.width = totalWidth + 'px'
-    canvas.style.height = totalHeight + 'px'
-    canvas.width = totalWidth * dpr
-    canvas.height = totalHeight * dpr
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.scale(dpr, dpr)
-    toastEl.style.width = totalWidth + 'px'
-    toastEl.style.height = totalHeight + 'px'
-    applyWrapperStyles()
-
-    let left = rect.left + rect.width / 2 - totalWidth / 2
-    let top = currentContext === 'image' ? rect.top - totalHeight - 16 : rect.top - totalHeight - 16
-    if (top < 8) top = rect.bottom + 16
-    if (left < 10) left = 10
-    if (left + totalWidth > window.innerWidth - 10) left = window.innerWidth - totalWidth - 10
-
-    toastEl.style.left = left + 'px'
-    toastEl.style.top = top + 'px'
-    toastEl.style.display = 'block'
-    toastEl.style.pointerEvents = 'auto'
-    canvas.style.pointerEvents = 'auto'
-
-    if (!isVisible) {
-      isVisible = true
-      springs.opacity.val = 0
-      springs.opacity.vel = 0
-      springs.scale.val = 0.8
-      springs.scale.vel = 0
-      toastEl.style.opacity = '0'
-      toastEl.style.transform = 'scale(0.8)'
     }
-    wake()
-  }
 
-  function hideToast() {
-    isVisible = false
-    toastEl.style.pointerEvents = 'none'
-    canvas.style.pointerEvents = 'none'
-    animState.hoveredButtonIndex = -1
-    isMouseDown = false
-    wake()
-  }
-  // --- Animation Loop ---
-  function wake() {
-    if (!isAwake) {
-      isAwake = true
-      lastTime = null
-      if (animationId) cancelAnimationFrame(animationId)
-      animationId = requestAnimationFrame(loop)
-    }
-  }
+    function loop(timestamp) {
+      if (!lastTime) lastTime = timestamp
+      const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
+      lastTime = timestamp
 
-  function loop(timestamp) {
-    if (!lastTime) lastTime = timestamp
-    const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
-    lastTime = timestamp
+      updateState(dt)
+      draw()
 
-    updateState(dt)
-    draw()
+      // Must check BOTH velocity AND distance to target so springs don't sleep mid-bounce
+      const opacityTarget = isVisible ? 1 : 0
+      const scaleTarget = isVisible ? 1 : 0.9
 
-    // Must check BOTH velocity AND distance to target so springs don't sleep mid-bounce
-    const opacityTarget = isVisible ? 1 : 0
-    const scaleTarget = isVisible ? 1 : 0.9
+      const opacityMoving = Math.abs(springs.opacity.vel) > 0.01 || Math.abs(springs.opacity.val - opacityTarget) > 0.01
+      const scaleMoving = Math.abs(springs.scale.vel) > 0.01 || Math.abs(springs.scale.val - scaleTarget) > 0.01
 
-    const opacityMoving = Math.abs(springs.opacity.vel) > 0.01 || Math.abs(springs.opacity.val - opacityTarget) > 0.01
-    const scaleMoving = Math.abs(springs.scale.vel) > 0.01 || Math.abs(springs.scale.val - scaleTarget) > 0.01
-
-    const buttonsMoving = springs.buttons.some((b, i) => {
-      const hoverTarget = animState.hoveredButtonIndex === i ? 1 : 0
-      const activeTarget = (animState.hoveredButtonIndex === i && isMouseDown) ? 1 : 0
-      return Math.abs(b.hover.vel) > 0.01 || Math.abs(b.hover.val - hoverTarget) > 0.01 ||
-        Math.abs(b.active.vel) > 0.01 || Math.abs(b.active.val - activeTarget) > 0.01
-    })
-
-    if (opacityMoving || scaleMoving || buttonsMoving) {
-      animationId = requestAnimationFrame(loop)
-    } else {
-      isAwake = false
-      animationId = null
-      if (!isVisible) toastEl.style.display = 'none'
-    }
-  }
-  function updateState(dt) {
-    const targetOpacity = isVisible ? 1 : 0
-    const targetScale = isVisible ? 1 : 0.9
-    stepSpring(
-      springs.opacity,
-      targetOpacity,
-      SPRING_STIFFNESS,
-      SPRING_DAMPING,
-      dt
-    )
-    stepSpring(springs.scale, targetScale, SPRING_STIFFNESS, SPRING_DAMPING, dt)
-    toastEl.style.opacity = springs.opacity.val
-    toastEl.style.transform = `scale(${springs.scale.val})`
-    animState.opacity = springs.opacity.val
-    animState.scale = springs.scale.val
-    const contextBtns = getContextButtons()
-    // Ensure springs.buttons is sized to current context button count
-    while (springs.buttons.length < contextBtns.length) {
-      springs.buttons.push({
-        hover: { val: 0, vel: 0 },
-        active: { val: 0, vel: 0 }
+      const buttonsMoving = springs.buttons.some((b, i) => {
+        const hoverTarget = animState.hoveredButtonIndex === i ? 1 : 0
+        const activeTarget = (animState.hoveredButtonIndex === i && isMouseDown) ? 1 : 0
+        return Math.abs(b.hover.vel) > 0.01 || Math.abs(b.hover.val - hoverTarget) > 0.01 ||
+          Math.abs(b.active.vel) > 0.01 || Math.abs(b.active.val - activeTarget) > 0.01
       })
+
+      if (opacityMoving || scaleMoving || buttonsMoving) {
+        animationId = requestAnimationFrame(loop)
+      } else {
+        isAwake = false
+        animationId = null
+        if (!isVisible) toastEl.style.display = 'none'
+      }
     }
-    contextBtns.forEach((_, i) => {
-      const sb = springs.buttons[i]
-      if (!sb) return
-      const isHover = animState.hoveredButtonIndex === i
-      const isActive = isHover && isMouseDown
-      stepSpring(sb.hover, isHover ? 1 : 0, HOVER_STIFFNESS, HOVER_DAMPING, dt)
+    function updateState(dt) {
+      const targetOpacity = isVisible ? 1 : 0
+      const targetScale = isVisible ? 1 : 0.9
       stepSpring(
-        sb.active,
-        isActive ? 1 : 0,
-        HOVER_STIFFNESS * 1.5,
-        HOVER_DAMPING * 1.2,
+        springs.opacity,
+        targetOpacity,
+        SPRING_STIFFNESS,
+        SPRING_DAMPING,
         dt
       )
-      animState.buttonHovers[i] = sb.hover.val
-      animState.buttonActive[i] = sb.active.val
-    })
-  }
-  function draw() {
-    const { style } = config
-    const contextBtns = getContextButtons()
-    const dpr = window.devicePixelRatio || 1
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
-    const baseBtnSize = style.iconSize + style.iconPadding * 2
-    buttons = []
-    let x = style.padding
-    const y = style.padding
-    contextBtns.forEach((btn, i) => {
-      const hoverVal = animState.buttonHovers[i] ?? 0
-      const activeVal = animState.buttonActive[i] ?? 0
-      const targetScale =
-        1 +
-        hoverVal * (style.hoverScale - 1) -
-        activeVal * (style.hoverScale - style.activeScale)
-      const currentBtnSize = baseBtnSize * targetScale
-      const offset = (baseBtnSize - currentBtnSize) / 2
-      // Hit-test box always uses base size so hover doesn't jitter
-      buttons.push({ x, y, w: baseBtnSize, h: baseBtnSize, data: btn })
-      const bx = x + offset
-      const by = y + offset
-      if (hoverVal > 0.001) {
-        ctx.fillStyle = style.hoverColor
-        ctx.globalAlpha = style.hoverOpacity * hoverVal
-        roundRect(
-          ctx,
-          bx,
-          by,
-          currentBtnSize,
-          currentBtnSize,
-          style.borderRadius
+      stepSpring(springs.scale, targetScale, SPRING_STIFFNESS, SPRING_DAMPING, dt)
+      toastEl.style.opacity = springs.opacity.val
+      toastEl.style.transform = `scale(${springs.scale.val})`
+      animState.opacity = springs.opacity.val
+      animState.scale = springs.scale.val
+      const contextBtns = getContextButtons()
+      // Ensure springs.buttons is sized to current context button count
+      while (springs.buttons.length < contextBtns.length) {
+        springs.buttons.push({
+          hover: { val: 0, vel: 0 },
+          active: { val: 0, vel: 0 }
+        })
+      }
+      contextBtns.forEach((_, i) => {
+        const sb = springs.buttons[i]
+        if (!sb) return
+        const isHover = animState.hoveredButtonIndex === i
+        const isActive = isHover && isMouseDown
+        stepSpring(sb.hover, isHover ? 1 : 0, HOVER_STIFFNESS, HOVER_DAMPING, dt)
+        stepSpring(
+          sb.active,
+          isActive ? 1 : 0,
+          HOVER_STIFFNESS * 1.5,
+          HOVER_DAMPING * 1.2,
+          dt
         )
-        ctx.fill()
-        ctx.globalAlpha = 1
-      }
-      const iconImg = loadedIcons[btn.id]
-      if (iconImg && iconsReady) {
-        const lift = hoverVal * -1 * (style.iconLift || 0)
-        const scaledIconSize = style.iconSize * targetScale
-        const ix = x + (baseBtnSize - scaledIconSize) / 2
-        const iy = y + (baseBtnSize - scaledIconSize) / 2 + lift
-        ctx.filter =
-          hoverVal > 0.001 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
-        ctx.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
-        ctx.filter = 'none'
-      }
-      x += baseBtnSize + style.buttonSpacing
-    })
-  }
-  // --- Icon Loading ---
-  function svgToDataUri(svgStr) {
-    const bytes = new TextEncoder().encode(svgStr)
-    const binStr = String.fromCharCode(...bytes)
-    return 'data:image/svg+xml;charset=utf-8;base64,' + window.btoa(binStr)
-  }
-  function loadSingleIcon(btn) {
-    return new Promise(resolve => {
-      const img = new Image()
-      let src = btn.icon || ''
-      if (src.trim().startsWith('<svg')) {
-        try {
-          src = svgToDataUri(src)
-        } catch (e) {
-          console.error('Icon encoding failed', e)
-          return resolve(null)
-        }
-      }
-      img.onload = () => resolve({ id: btn.id, img })
-      img.onerror = () => {
-        console.warn(`Failed to load icon for ${btn.id}`)
-        resolve(null)
-      }
-      img.src = src
-    })
-  }
-  function loadIcons() {
-    loadedIcons = {}
-    iconsReady = false
-    const total = config.buttons.length
-    // Size springs to the max possible button count (all buttons)
-    // so we never have index gaps regardless of context
-    springs.buttons = config.buttons.map(() => ({
-      hover: { val: 0, vel: 0 },
-      active: { val: 0, vel: 0 }
-    }))
-    animState.buttonHovers = new Array(total).fill(0)
-    animState.buttonActive = new Array(total).fill(0)
-    if (total === 0) {
-      iconsReady = true
-      return
-    }
-    Promise.all(config.buttons.map(loadSingleIcon)).then(results => {
-      results.forEach(r => {
-        if (r) loadedIcons[r.id] = r.img
+        animState.buttonHovers[i] = sb.hover.val
+        animState.buttonActive[i] = sb.active.val
       })
-      iconsReady = true
-      if (isVisible) requestAnimationFrame(draw)
-    })
-  }
-
-  function handleCanvasDown() {
-    if (animState.hoveredButtonIndex !== -1) isMouseDown = true
-  }
-  async function handleCanvasUp() {
-    if (!chrome.runtime?.id) return
-    isMouseDown = false
-    wake()
-    if (animState.hoveredButtonIndex === -1) return
-    const btn = buttons[animState.hoveredButtonIndex]
-    if (!btn) return
-    const { type, url, action } = btn.data
-
-    if (type === 'link') {
-      const targetUrl = url.includes('%s') ? url.replace('%s', encodeURIComponent(currentSelection)) : url
-      window.open(targetUrl, '_blank')
-    } else if (type === 'image-search') {
-      handleImageSearch(url)
-    } else if (type === 'transform') {
-      let text = currentSelection
-      if (action === 'uppercase') text = text.toUpperCase()
-      if (action === 'lowercase') text = text.toLowerCase()
-      if (action === 'urlencode') text = encodeURIComponent(text)
-      if (selectionRange) {
-        selectionRange.deleteContents()
-        selectionRange.insertNode(document.createTextNode(text))
-      }
-    } else if (type === 'webhook') {
-      chrome.runtime.sendMessage({ type: 'WEBHOOK', url: url, text: currentSelection })
-    } else if (type === 'action') {
-      if (action === 'copy') {
-        await handleCopy()
-      } else if (action === 'paste') {
-        try {
-          const text = await navigator.clipboard.readText()
-          if (selectionRange) {
-            selectionRange.deleteContents()
-            selectionRange.insertNode(document.createTextNode(text))
+    }
+    function draw() {
+      const { style } = config
+      const contextBtns = getContextButtons()
+      const dpr = window.devicePixelRatio || 1
+      ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
+      const baseBtnSize = style.iconSize + style.iconPadding * 2
+      buttons = []
+      let x = style.padding
+      const y = style.padding
+      contextBtns.forEach((btn, i) => {
+        const hoverVal = animState.buttonHovers[i] ?? 0
+        const activeVal = animState.buttonActive[i] ?? 0
+        const targetScale =
+          1 +
+          hoverVal * (style.hoverScale - 1) -
+          activeVal * (style.hoverScale - style.activeScale)
+        const currentBtnSize = baseBtnSize * targetScale
+        const offset = (baseBtnSize - currentBtnSize) / 2
+        // Hit-test box always uses base size so hover doesn't jitter
+        buttons.push({ x, y, w: baseBtnSize, h: baseBtnSize, data: btn })
+        const bx = x + offset
+        const by = y + offset
+        if (hoverVal > 0.001) {
+          ctx.fillStyle = style.hoverColor
+          ctx.globalAlpha = style.hoverOpacity * hoverVal
+          roundRect(
+            ctx,
+            bx,
+            by,
+            currentBtnSize,
+            currentBtnSize,
+            style.borderRadius
+          )
+          ctx.fill()
+          ctx.globalAlpha = 1
+        }
+        const iconImg = loadedIcons[btn.id]
+        if (iconImg && iconsReady) {
+          const lift = hoverVal * -1 * (style.iconLift || 0)
+          const scaledIconSize = style.iconSize * targetScale
+          const ix = x + (baseBtnSize - scaledIconSize) / 2
+          const iy = y + (baseBtnSize - scaledIconSize) / 2 + lift
+          ctx.filter =
+            hoverVal > 0.001 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
+          ctx.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
+          ctx.filter = 'none'
+        }
+        x += baseBtnSize + style.buttonSpacing
+      })
+    }
+    // --- Icon Loading ---
+    function svgToDataUri(svgStr) {
+      const bytes = new TextEncoder().encode(svgStr)
+      const binStr = String.fromCharCode(...bytes)
+      return 'data:image/svg+xml;charset=utf-8;base64,' + window.btoa(binStr)
+    }
+    function loadSingleIcon(btn) {
+      return new Promise(resolve => {
+        const img = new Image()
+        let src = btn.icon || ''
+        if (src.trim().startsWith('<svg')) {
+          try {
+            src = svgToDataUri(src)
+          } catch (e) {
+            console.error('Icon encoding failed', e)
+            return resolve(null)
           }
-        } catch (err) {
-          console.error('[Toast] Paste failed:', err)
         }
-      } else if (action === 'markdown') {
-        await handleMarkdownCopy(btn.data)
-      }
-    }
-    hideToast()
-  }
-
-  async function handleMarkdownCopy(btn) {
-    if (!chrome.runtime?.id) return
-    const source = btn.markdownSource || 'selection'
-    let htmlPayload = ''
-
-    if (source === 'page') {
-      const clone = document.body.cloneNode(true)
-      const noisy = [
-        'script', 'style', 'noscript', 'iframe', 'nav',
-        'header', 'footer', 'aside', '[aria-hidden="true"]'
-      ]
-      noisy.forEach(sel => {
-        clone.querySelectorAll(sel).forEach(el => el.remove())
+        img.onload = () => resolve({ id: btn.id, img })
+        img.onerror = () => {
+          console.warn(`Failed to load icon for ${btn.id}`)
+          resolve(null)
+        }
+        img.src = src
       })
-      const title = document.title.trim()
-      htmlPayload = title ? `<h1>${title}</h1>\n${clone.innerHTML}` : clone.innerHTML
-    } else {
-      if (!selectionRange) return
-      const fragment = selectionRange.cloneContents()
-      const wrapper = document.createElement('div')
-      wrapper.appendChild(fragment)
-      htmlPayload = wrapper.innerHTML
+    }
+    function loadIcons() {
+      loadedIcons = {}
+      iconsReady = false
+      const total = config.buttons.length
+      // Size springs to the max possible button count (all buttons)
+      // so we never have index gaps regardless of context
+      springs.buttons = config.buttons.map(() => ({
+        hover: { val: 0, vel: 0 },
+        active: { val: 0, vel: 0 }
+      }))
+      animState.buttonHovers = new Array(total).fill(0)
+      animState.buttonActive = new Array(total).fill(0)
+      if (total === 0) {
+        iconsReady = true
+        return
+      }
+      Promise.all(config.buttons.map(loadSingleIcon)).then(results => {
+        results.forEach(r => {
+          if (r) loadedIcons[r.id] = r.img
+        })
+        iconsReady = true
+        if (isVisible) requestAnimationFrame(draw)
+      })
     }
 
-    try {
-      const markdown = turndownService.turndown(htmlPayload)
-      await navigator.clipboard.writeText(markdown)
-    } catch (err) {
-      console.error('[Toast] Markdown copy failed:', err)
+    function handleCanvasDown() {
+      if (animState.hoveredButtonIndex !== -1) isMouseDown = true
     }
-  }
-  // --- Action Handlers ---
-  function handleImageSearch(urlTemplate) {
-    if (!imageContext.isAccessible || !imageContext.resolvedUrl) {
-      // data: or blob: URI — can't be fetched by remote engines
-      console.warn(
-        '[Toast] Image search unavailable: image src is a data/blob URI and cannot be resolved by remote search engines.'
-      )
-      return
+    async function handleCanvasUp() {
+      if (!chrome.runtime?.id) return
+      isMouseDown = false
+      wake()
+      if (animState.hoveredButtonIndex === -1) return
+      const btn = buttons[animState.hoveredButtonIndex]
+      if (!btn) return
+      const { type, url, action } = btn.data
+
+      if (type === 'link') {
+        const targetUrl = url.includes('%s') ? url.replace('%s', encodeURIComponent(currentSelection)) : url
+        window.open(targetUrl, '_blank')
+      } else if (type === 'image-search') {
+        handleImageSearch(url)
+      } else if (type === 'transform') {
+        let text = currentSelection
+        if (action === 'uppercase') text = text.toUpperCase()
+        if (action === 'lowercase') text = text.toLowerCase()
+        if (action === 'urlencode') text = encodeURIComponent(text)
+        if (selectionRange) {
+          selectionRange.deleteContents()
+          selectionRange.insertNode(document.createTextNode(text))
+        }
+      } else if (type === 'webhook') {
+        chrome.runtime.sendMessage({ type: 'WEBHOOK', url: url, text: currentSelection })
+      } else if (type === 'action') {
+        if (action === 'copy') {
+          await handleCopy()
+        } else if (action === 'paste') {
+          try {
+            const text = await navigator.clipboard.readText()
+            if (selectionRange) {
+              selectionRange.deleteContents()
+              selectionRange.insertNode(document.createTextNode(text))
+            }
+          } catch (err) {
+            console.error('[Toast] Paste failed:', err)
+          }
+        } else if (action === 'markdown') {
+          await handleMarkdownCopy(btn.data)
+        }
+      }
+      hideToast()
     }
-    const targetUrl = urlTemplate.replace(
-      '%s',
-      encodeURIComponent(imageContext.resolvedUrl)
-    )
-    window.open(targetUrl, '_blank')
-  }
-  async function handleCopy() {
-    if (currentContext === 'image') {
-      await copyImage()
-    } else {
+
+    async function handleMarkdownCopy(btn) {
+      if (!chrome.runtime?.id) return
+      const source = btn.markdownSource || 'selection'
+      let htmlPayload = ''
+
+      if (source === 'page') {
+        const clone = document.body.cloneNode(true)
+        const noisy = [
+          'script', 'style', 'noscript', 'iframe', 'nav',
+          'header', 'footer', 'aside', '[aria-hidden="true"]'
+        ]
+        noisy.forEach(sel => {
+          clone.querySelectorAll(sel).forEach(el => el.remove())
+        })
+        const title = document.title.trim()
+        htmlPayload = title ? `<h1>${title}</h1>\n${clone.innerHTML}` : clone.innerHTML
+      } else {
+        if (!selectionRange) return
+        const fragment = selectionRange.cloneContents()
+        const wrapper = document.createElement('div')
+        wrapper.appendChild(fragment)
+        htmlPayload = wrapper.innerHTML
+      }
+
       try {
-        await navigator.clipboard.writeText(currentSelection)
+        const markdown = turndownService.turndown(htmlPayload)
+        await navigator.clipboard.writeText(markdown)
       } catch (err) {
-        console.error('[Toast] Copy text failed:', err)
+        console.error('[Toast] Markdown copy failed:', err)
       }
     }
-  }
-  async function copyImage() {
-    const src = imageContext.resolvedUrl || imageContext.src
-    if (!src) return
-    // data: URI — decode and write directly, no fetch needed
-    if (src.startsWith('data:image/png')) {
+    // --- Action Handlers ---
+    function handleImageSearch(urlTemplate) {
+      if (!imageContext.isAccessible || !imageContext.resolvedUrl) {
+        // data: or blob: URI — can't be fetched by remote engines
+        console.warn(
+          '[Toast] Image search unavailable: image src is a data/blob URI and cannot be resolved by remote search engines.'
+        )
+        return
+      }
+      const targetUrl = urlTemplate.replace(
+        '%s',
+        encodeURIComponent(imageContext.resolvedUrl)
+      )
+      window.open(targetUrl, '_blank')
+    }
+    async function handleCopy() {
+      if (currentContext === 'image') {
+        await copyImage()
+      } else {
+        try {
+          await navigator.clipboard.writeText(currentSelection)
+        } catch (err) {
+          console.error('[Toast] Copy text failed:', err)
+        }
+      }
+    }
+    async function copyImage() {
+      const src = imageContext.resolvedUrl || imageContext.src
+      if (!src) return
+      // data: URI — decode and write directly, no fetch needed
+      if (src.startsWith('data:image/png')) {
+        try {
+          const res = await fetch(src)
+          const blob = await res.blob()
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ])
+        } catch (err) {
+          console.error('[Toast] Copy image (data URI) failed:', err)
+        }
+        return
+      }
+      // Remote URL — fetch the image. Will fail for cross-origin images
+      // that don't set CORS headers, which is most of the web. We try anyway
+      // and fall back to copying the URL as plain text.
       try {
-        const res = await fetch(src)
+        const res = await fetch(src, { mode: 'cors' })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const blob = await res.blob()
+        // Normalise to PNG since ClipboardItem only reliably accepts image/png
+        const pngBlob = await normaliseToPng(blob)
         await navigator.clipboard.write([
-          new ClipboardItem({ 'image/png': blob })
+          new ClipboardItem({ 'image/png': pngBlob })
         ])
-      } catch (err) {
-        console.error('[Toast] Copy image (data URI) failed:', err)
-      }
-      return
-    }
-    // Remote URL — fetch the image. Will fail for cross-origin images
-    // that don't set CORS headers, which is most of the web. We try anyway
-    // and fall back to copying the URL as plain text.
-    try {
-      const res = await fetch(src, { mode: 'cors' })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const blob = await res.blob()
-      // Normalise to PNG since ClipboardItem only reliably accepts image/png
-      const pngBlob = await normaliseToPng(blob)
-      await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': pngBlob })
-      ])
-    } catch {
-      // CORS or fetch failure — copy the URL instead as a graceful fallback
-      console.warn(
-        '[Toast] Could not fetch image for clipboard, copying URL instead.'
-      )
-      try {
-        await navigator.clipboard.writeText(src)
-      } catch (err) {
-        console.error('[Toast] Fallback URL copy failed:', err)
+      } catch {
+        // CORS or fetch failure — copy the URL instead as a graceful fallback
+        console.warn(
+          '[Toast] Could not fetch image for clipboard, copying URL instead.'
+        )
+        try {
+          await navigator.clipboard.writeText(src)
+        } catch (err) {
+          console.error('[Toast] Fallback URL copy failed:', err)
+        }
       }
     }
-  }
-  // Draws any image blob onto an offscreen canvas and exports as PNG
-  function normaliseToPng(blob) {
-    return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(blob)
-      const img = new Image()
-      img.onload = () => {
-        const offscreen = document.createElement('canvas')
-        offscreen.width = img.naturalWidth
-        offscreen.height = img.naturalHeight
-        const octx = offscreen.getContext('2d')
-        octx.drawImage(img, 0, 0)
-        URL.revokeObjectURL(url)
-        offscreen.toBlob(pngBlob => {
-          if (pngBlob) resolve(pngBlob)
-          else reject(new Error('toBlob failed'))
-        }, 'image/png')
-      }
-      img.onerror = () => {
-        URL.revokeObjectURL(url)
-        reject(new Error('Image load failed'))
-      }
-      img.src = url
-    })
-  }
-  // --- Drawing Utilities ---
-  function roundRect(ctx, x, y, w, h, r) {
-    if (w < 2 * r) r = w / 2
-    if (h < 2 * r) r = h / 2
-    ctx.beginPath()
-    ctx.moveTo(x + r, y)
-    ctx.arcTo(x + w, y, x + w, y + h, r)
-    ctx.arcTo(x + w, y + h, x, y + h, r)
-    ctx.arcTo(x, y + h, x, y, r)
-    ctx.arcTo(x, y, x + w, y, r)
-    ctx.closePath()
-  }
-  // --- Bootstrap ---
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init)
-  } else {
-    init()
-  }
-})()
+    // Draws any image blob onto an offscreen canvas and exports as PNG
+    function normaliseToPng(blob) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob)
+        const img = new Image()
+        img.onload = () => {
+          const offscreen = document.createElement('canvas')
+          offscreen.width = img.naturalWidth
+          offscreen.height = img.naturalHeight
+          const octx = offscreen.getContext('2d')
+          octx.drawImage(img, 0, 0)
+          URL.revokeObjectURL(url)
+          offscreen.toBlob(pngBlob => {
+            if (pngBlob) resolve(pngBlob)
+            else reject(new Error('toBlob failed'))
+          }, 'image/png')
+        }
+        img.onerror = () => {
+          URL.revokeObjectURL(url)
+          reject(new Error('Image load failed'))
+        }
+        img.src = url
+      })
+    }
+    // --- Drawing Utilities ---
+    function roundRect(ctx, x, y, w, h, r) {
+      if (w < 2 * r) r = w / 2
+      if (h < 2 * r) r = h / 2
+      ctx.beginPath()
+      ctx.moveTo(x + r, y)
+      ctx.arcTo(x + w, y, x + w, y + h, r)
+      ctx.arcTo(x + w, y + h, x, y + h, r)
+      ctx.arcTo(x, y + h, x, y, r)
+      ctx.arcTo(x, y, x + w, y, r)
+      ctx.closePath()
+    }
+    // --- Bootstrap ---
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init)
+    } else {
+      init()
+    }
+  })()
 </file>
 
 </files>

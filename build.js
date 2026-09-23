@@ -72,6 +72,14 @@ function minifyAndCopyHtml() {
   fs.writeFileSync(path.join(distDir, "popup.html"), out);
 }
 
+function minifyAndCopyCss() {
+  const src = fs.readFileSync("popup.css", "utf8");
+  const out = src
+    .replace(/\n\s+/g, "")
+    .replace(/\/\*.*?\*\//g, "");
+  fs.writeFileSync(path.join(distDir, "popup.css"), out);
+}
+
 function prepareDist() {
   if (fs.existsSync(distDir)) fs.rmSync(distDir, { recursive: true });
   fs.mkdirSync(distDir);
@@ -171,6 +179,12 @@ function watchStaticFiles() {
     pushReload("popup.html");
   });
 
+  fs.watch("popup.css", () => {
+    console.log("[dev] popup.css changed");
+    fs.copyFileSync("popup.css", path.join(distDir, "popup.css"));
+    pushReload("popup.css");
+  });
+
   if (fs.existsSync("assets")) {
     fs.watch("assets", () => {
       copyAssets();
@@ -184,6 +198,7 @@ async function runDev() {
   prepareDist();
   copyAssets();
   minifyAndCopyHtml();
+  fs.copyFileSync("popup.css", path.join(distDir, "popup.css"));
   writeReloadShim();
   writeDevManifest();
 
@@ -252,6 +267,13 @@ async function runBuild() {
   copyAssets();
   minifyAndCopyHtml();
   copyManifest();
+
+  // Let esbuild minify your CSS properly:
+  esbuild.buildSync({
+    entryPoints: ["popup.css"],
+    minify: true,
+    outfile: path.join(distDir, "popup.css"),
+  });
 
   esbuild.buildSync({
     entryPoints: ["content.js"],

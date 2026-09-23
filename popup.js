@@ -28,11 +28,12 @@ document.addEventListener('DOMContentLoaded', () => {
       bgOpacity: 0.75,
       hoverColor: '#696969',
       hoverOpacity: 0.33,
-      borderRadius: 7,
+      borderRadius: 9,
+      buttonRadius: 6,
+      padding: 3,
       iconSize: 16,
-      iconPadding: 5,
-      buttonSpacing: 6,
-      padding: 6,
+      iconPadding: 4,
+      buttonSpacing: 12,
       hoverScale: 1.15,
       activeScale: 0.9,
       iconLift: 2
@@ -51,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
         action: 'markdown',
         markdownSource: 'selection',
         contexts: ['text'],
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 32 32"><path d="M0 0h32v32H0z" fill="none"/><path fill="#d5d5d5" d="M2.875 6C1.32 6 0 7.254 0 8.813v14.374C0 24.747 1.32 26 2.875 26h26.25C30.68 26 32 24.746 32 23.187V8.813C32 7.255 30.68 6 29.125 6zm0 2h26.25c.516 0 .875.383.875.813v14.374c0 .43-.36.813-.875.813H2.875C2.359 24 2 23.617 2 23.187V8.813c0-.43.36-.812.875-.812zM5 11v10h3v-6.656l3 3.969l3-3.97V21h3V11h-3l-3 4l-3-4zm17 0v5h-3l4.5 5l4.5-5h-3v-5z"/></svg>'
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 16 16"><g fill="#b5b5b5"><path d="M14 3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM2 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><path fill-rule="evenodd" d="M9.146 8.146a.5.5 0 0 1 .708 0L11.5 9.793l1.646-1.647a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 0 1 0-.708"/><path fill-rule="evenodd" d="M11.5 5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5"/><path d="M3.56 11V7.01h.056l1.428 3.239h.774l1.42-3.24h.056V11h1.073V5.001h-1.2l-1.71 3.894h-.039l-1.71-3.894H2.5V11z"/></g></svg>'
       },
       {
         id: 'google-text',
@@ -168,6 +169,13 @@ document.addEventListener('DOMContentLoaded', () => {
     previewRafId = requestAnimationFrame(drawPreview)
   }
 
+  function getEffectiveButtonRadius(btn, style) {
+    if (btn && btn.borderRadius !== undefined && btn.borderRadius !== null && btn.borderRadius !== '') {
+      return Number(btn.borderRadius)
+    }
+    return style.buttonRadius !== undefined ? style.buttonRadius : 6
+  }
+
   function drawPreview() {
     previewRafId = null
     const { style, buttons } = currentConfig
@@ -225,7 +233,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const hc = hexToRgb(style.hoverColor)
         c.fillStyle = `rgba(${hc.r},${hc.g},${hc.b},${style.hoverOpacity})`
-        roundRectPath(c, x + offset, y + offset, scaledSize, scaledSize, style.borderRadius * 0.7)
+        // roundRectPath(c, x + offset, y + offset, scaledSize, scaledSize, style.borderRadius * 0.7)
+        const effectiveRadius = getEffectiveButtonRadius(btn, style) * targetScale
+        roundRectPath(c, x + offset, y + offset, scaledSize, scaledSize, effectiveRadius)
         c.fill()
 
         const iconImg = previewIcons[btn.id]
@@ -382,6 +392,22 @@ document.addEventListener('DOMContentLoaded', () => {
       body.appendChild(urlLabel)
       body.appendChild(buildUrlInput(btn, index, 'https://lens.google.com/uploadbyurl?url=%s'))
     }
+
+    const radiusLabel = document.createElement('span')
+    radiusLabel.className = 'field-label'
+    radiusLabel.textContent = 'Custom Radius (px, optional)'
+    body.appendChild(radiusLabel)
+
+    const radiusInput = document.createElement('input')
+    radiusInput.type = 'number'
+    radiusInput.min = '0'
+    radiusInput.max = '24'
+    radiusInput.placeholder = `Inherit (${currentConfig.style.buttonRadius ?? 6}px)`
+    radiusInput.className = 'config-input'
+    radiusInput.dataset.field = 'borderRadius'
+    radiusInput.dataset.index = index
+    radiusInput.value = btn.borderRadius !== undefined ? btn.borderRadius : ''
+    body.appendChild(radiusInput)
 
     // Icon
     const iconLabel = document.createElement('span')
@@ -545,6 +571,16 @@ document.addEventListener('DOMContentLoaded', () => {
           btn.action = e.target.value
           if (btn.action !== 'markdown') delete btn.markdownSource
           renderUI()
+          return
+        }
+
+        if (field === 'borderRadius') {
+          if (e.target.value.trim() === '' || isNaN(Number(e.target.value))) {
+            delete btn.borderRadius
+          } else {
+            btn.borderRadius = Number(e.target.value)
+          }
+          schedulePreviewDraw()
           return
         }
 

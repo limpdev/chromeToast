@@ -28,7 +28,7 @@ A lightweight, fully customizable Chrome extension that summons a sleek floating
    ```bash
    npm run build
    ```
-   This produces a `dist/` folder and a ready-to-upload `extension.zip`.
+   This produces a `dist/` folder and a ready-to-upload `toast-chrome.zip` (`BROWSER_TARGET=firefox` for `toast-firefox.zip`).
 
 4. Load in Chrome:
    - Navigate to `chrome://extensions`
@@ -62,23 +62,35 @@ Click the Toast icon in your Chrome toolbar to open the settings popup.
 | Setting      | Description                                      |
 | ------------ | ------------------------------------------------ |
 | Background   | The fill color of the toast container            |
-| Accent Color | The highlight color shown when hovering a button |
-| Opacity      | Background opacity (0.5–1.0)                     |
+| Accent       | The highlight color shown when hovering a button |
+| Opacity      | Background opacity (0.1–1.0)                     |
+| Toast Radius | Corner radius of the toast container             |
+| Btn Radius   | Corner radius of each button's hover highlight (overridable per button) |
+
+### Layout & Spacing
+
+| Setting      | Description                                      |
+| ------------ | ------------------------------------------------ |
+| Icon Size    | Rendered icon size in px                         |
+| Icon Padding | Space between an icon and its hover highlight    |
+| Btn Spacing  | Gap between buttons                              |
+| Wall Padding | Gap between the outer buttons and the toast edge |
 
 ### Animation & Interaction
 
 | Setting      | Description                                         |
 | ------------ | --------------------------------------------------- |
-| Anim Speed   | How fast the toast fades in/out and buttons animate |
 | Hover Scale  | How much a button grows when hovered                |
 | Active Click | How much a button shrinks when clicked              |
 | Icon Lift    | How many pixels the icon floats upward on hover     |
+| Hover Opacity | Opacity of the accent highlight behind a hovered button |
 
 ### Actions & Links
 
 Each button has a **type**:
 
-- **System Action** — `copy` (copies selection) or `paste` (replaces selection with clipboard contents)
+- **System Action** — `copy` (copies the selection, or the image under Ctrl+hover), `paste` (replaces selection with clipboard contents), or `markdown` (copies the selection or the whole page as Markdown)
+- **Image Search** — hold Ctrl while hovering an image; opens its URL in a reverse-image-search engine (`%s` = image URL)
 - **Search / Link** — opens a URL in a new tab. Use `%s` as a placeholder for the selected text:
   ```
   https://www.google.com/search?q=%s
@@ -94,7 +106,7 @@ You can add as many buttons as you like, reorder them by removing and re-adding,
 
 | Permission       | Why it's needed                   |
 | ---------------- | --------------------------------- |
-| `storage`        | Saves your configuration settings |
+| `storage`        | Saves your configuration settings (`chrome.storage.local`; an older `sync` config is read as a fallback) |
 | `clipboardWrite` | Required for the Copy action      |
 | `clipboardRead`  | Required for the Paste action     |
 
@@ -128,7 +140,7 @@ The build script will:
 1. Bundle and minify `content.js` and `popup.js` via esbuild
 2. Minify `popup.html`
 3. Copy `manifest.json` and icon assets into `dist/`
-4. Package everything into `extension.zip` ready for Web Store upload
+4. Package everything into `toast-<target>.zip` ready for Web Store upload
 
 ---
 

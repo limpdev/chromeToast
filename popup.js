@@ -109,9 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ─── Preview: Icon Loading ────────────────────────────────────────────────────
 
   function svgToDataUri(svgStr) {
-    const bytes = new TextEncoder().encode(svgStr)
-    const binStr = String.fromCharCode(...bytes)
-    return 'data:image/svg+xml;charset=utf-8;base64,' + btoa(binStr)
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr)
   }
 
   function loadPreviewIcons() {
@@ -126,7 +124,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const img = new Image()
       let src = btn.icon || ''
       if (src.trim().startsWith('<svg')) {
-        try { src = svgToDataUri(src) } catch { return }
+        try { src = svgToDataUri(src) } catch {
+          // Still count it, or the preview never draws
+          loaded++
+          if (loaded === btns.length) schedulePreviewDraw()
+          return
+        }
       }
       img.onload = () => {
         previewIcons[btn.id] = img
@@ -535,7 +538,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.checked) {
           if (!btn.contexts.includes(ctx)) btn.contexts.push(ctx)
         } else {
-          btn.contexts = btn.contexts.filter(c => c !== ctx)
+          const remaining = btn.contexts.filter(c => c !== ctx)
+          // A button with no context would silently fall back to text-only
+          // in content.js, so keep at least one box ticked
+          if (remaining.length === 0) {
+            e.target.checked = true
+            return
+          }
+          btn.contexts = remaining
         }
         schedulePreviewDraw()
       })
@@ -554,11 +564,16 @@ document.addEventListener('DOMContentLoaded', () => {
           btn.type = e.target.value
           if (btn.type === 'link') {
             btn.url = 'https://google.com/search?q=%s'
+            // Links substitute selected text; on an image there is none
+            btn.contexts = ['text']
             delete btn.action
+            delete btn.markdownSource
           } else if (btn.type === 'image-search') {
             btn.url = 'https://lens.google.com/uploadbyurl?url=%s'
-            if (!btn.contexts || btn.contexts.length === 0) btn.contexts = ['image']
+            // Image search needs an image URL; it does nothing on text
+            btn.contexts = ['image']
             delete btn.action
+            delete btn.markdownSource
           } else if (btn.type === 'action') {
             btn.action = 'copy'
             delete btn.url
@@ -570,6 +585,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (field === 'action') {
           btn.action = e.target.value
           if (btn.action !== 'markdown') delete btn.markdownSource
+          // Only Copy has an image behaviour; Paste/Markdown are text-only
+          if (btn.action !== 'copy') btn.contexts = ['text']
           renderUI()
           return
         }
@@ -591,21 +608,25 @@ document.addEventListener('DOMContentLoaded', () => {
       })
     })
 
-    // Style inputs — live preview on every input event
-    elements.styleInputs.forEach(input => {
-      input.addEventListener('input', e => {
-        const key = e.target.dataset.key
-        let val = e.target.value
-        if (input.type === 'range') {
-          val = parseFloat(val)
-          const display = document.getElementById(`val-${key}`)
-          if (display) display.textContent = val
-        }
-        currentConfig.style[key] = val
-        schedulePreviewDraw()
-      })
-    })
   }
+
+  // Style inputs are static markup, so bind them exactly once. (They used to be
+  // bound inside attachListeners(), which stacked a new listener on every
+  // renderUI() call.)
+  elements.styleInputs.forEach(input => {
+    input.addEventListener('input', e => {
+      if (!currentConfig) return
+      const key = e.target.dataset.key
+      let val = e.target.value
+      if (input.type === 'range') {
+        val = parseFloat(val)
+        const display = document.getElementById(`val-${key}`)
+        if (display) display.textContent = val
+      }
+      currentConfig.style[key] = val
+      schedulePreviewDraw()
+    })
+  })
 
   // ─── Add Buttons ─────────────────────────────────────────────────────────────
 
@@ -660,27 +681,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ─── Save ────────────────────────────────────────────────────────────────────
 
+  const CONFIG_KEY = 'canvasToastConfig'
+  let statusTimer = null
+
   elements.saveBtn.addEventListener('click', () => {
     const origText = elements.saveBtn.textContent
     elements.saveBtn.textContent = 'Saving...'
     elements.saveBtn.disabled = true
-    chrome.storage.sync.set({ canvasToastConfig: currentConfig }, () => {
+    // storage.local, not sync: sync caps one item at 8 KB, and a couple of
+    // custom SVG icons exceed that, which made Save fail silently
+    chrome.storage.local.set({ [CONFIG_KEY]: currentConfig }, () => {
+      const err = chrome.runtime.lastError
       elements.saveBtn.textContent = origText
       elements.saveBtn.disabled = false
+      elements.status.textContent = err ? 'save failed.' : 'saved.'
+      elements.status.style.color = err ? 'var(--danger)' : ''
+      if (err) console.error('[Toast] Save failed:', err.message)
       elements.status.style.opacity = '1'
-      setTimeout(() => { elements.status.style.opacity = '0' }, 2000)
+      clearTimeout(statusTimer)
+      statusTimer = setTimeout(() => { elements.status.style.opacity = '0' }, err ? 4000 : 2000)
     })
   })
 
   // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
-  chrome.storage.sync.get(['canvasToastConfig'], result => {
-    const saved = result.canvasToastConfig || {}
+  function loadConfig(cb) {
+    chrome.storage.local.get([CONFIG_KEY], local => {
+      if (local[CONFIG_KEY]) return cb(local[CONFIG_KEY])
+      chrome.storage.sync.get([CONFIG_KEY], synced => cb(synced[CONFIG_KEY]))
+    })
+  }
+
+  loadConfig(result => {
+    const saved = result || {}
     currentConfig = {
       style: { ...defaultConfig.style, ...(saved.style || {}) },
       buttons: saved.buttons && saved.buttons.length > 0
         ? saved.buttons
-        : defaultConfig.buttons
+        : structuredClone(defaultConfig.buttons)
     }
     // Backfill missing contexts
     currentConfig.buttons = currentConfig.buttons.map(btn => ({

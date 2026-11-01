@@ -14,6 +14,7 @@ import { gfm } from 'turndown-plugin-gfm'
     let animationId = null
     let selectionRafId = null  // fix mouse click handling
     let buttons = []
+    let activeButtons = [] // context-filtered config.buttons for the current show
     let loadedIcons = {}
     let iconsReady = false
     let isMouseDown = false
@@ -119,13 +120,6 @@ import { gfm } from 'turndown-plugin-gfm'
         }
       ]
     }
-    // Strip elements that are invisible or purely presentational
-    // turndownService.addRule('removeHidden', {
-    //   filter: el =>
-    //     el.style &&
-    //     (el.style.display === 'none' || el.style.visibility === 'hidden'),
-    //   replacement: () => ''
-    // })
 
     let config = JSON.parse(JSON.stringify(defaultConfig))
     // --- Helpers ---
@@ -155,26 +149,30 @@ import { gfm } from 'turndown-plugin-gfm'
       }
     }
     // --- Initialization ---
+    // Config lives in storage.local (sync caps a single item at 8 KB, which a
+    // couple of custom SVG icons blow through). Older installs saved to sync,
+    // so fall back to it when local is empty.
+    const CONFIG_KEY = 'canvasToastConfig'
+    function loadConfig(cb) {
+      chrome.storage.local.get([CONFIG_KEY], local => {
+        if (local[CONFIG_KEY]) return cb(local[CONFIG_KEY])
+        chrome.storage.sync.get([CONFIG_KEY], synced => cb(synced[CONFIG_KEY]))
+      })
+    }
     function init() {
-      chrome.storage.sync.get(['canvasToastConfig'], result => {
-        applyConfig(result.canvasToastConfig)
+      loadConfig(saved => {
+        applyConfig(saved)
         setupDOM()
         loadIcons()
         attachEvents()
       })
-      currentConfig.buttons = currentConfig.buttons.map(btn => {
-        if (btn.id === 'markdown' && btn.icon && !btn.icon.includes('viewBox="0 0 16 16">')) {
-          btn.icon = defaultConfig.buttons.find(b => b.id === 'markdown').icon
-        }
-        return btn
-      })
-      chrome.storage.onChanged.addListener(changes => {
-        if (changes.canvasToastConfig) {
-          applyConfig(changes.canvasToastConfig.newValue)
-          loadIcons()
-          applyWrapperStyles()
-          if (isVisible) requestAnimationFrame(draw)
-        }
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local' || !changes[CONFIG_KEY]) return
+        applyConfig(changes[CONFIG_KEY].newValue)
+        loadIcons()
+        applyWrapperStyles()
+        // Geometry may have changed; dismiss rather than draw into a stale canvas size
+        if (isVisible) hideToast()
       })
     }
     function applyConfig(newConfig) {
@@ -183,6 +181,13 @@ import { gfm } from 'turndown-plugin-gfm'
         newConfig.buttons && newConfig.buttons.length > 0
           ? newConfig.buttons
           : defaultConfig.buttons
+      // Migrate the legacy markdown icon to the current one
+      const mdDefault = defaultConfig.buttons.find(b => b.id === 'markdown').icon
+      config.buttons = config.buttons.map(btn =>
+        btn.id === 'markdown' && btn.icon && !btn.icon.includes('viewBox="0 0 16 16"')
+          ? { ...btn, icon: mdDefault }
+          : btn
+      )
       if (newConfig.style) {
         config.style = { ...defaultConfig.style, ...newConfig.style }
       }
@@ -195,15 +200,12 @@ import { gfm } from 'turndown-plugin-gfm'
 
       hostEl = document.createElement('div')
       hostEl.id = 'toast-extension-root'
-      Object.assign(hostEl.style, {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        zIndex: '2147483647',
-        pointerEvents: 'none',
-        cursor: 'pointer',
-        all: 'initial'
-      })
+      // `all: initial` must come first: it's a shorthand that resets every
+      // longhand, so applying it last wiped the z-index and positioning.
+      // A fixed, max-z host makes the toast its own top-level stacking context.
+      hostEl.style.cssText =
+        'all:initial;position:fixed;top:0;left:0;width:0;height:0;' +
+        'z-index:2147483647;pointer-events:none;'
 
       shadow = hostEl.attachShadow({ mode: 'closed' })
 
@@ -242,12 +244,13 @@ import { gfm } from 'turndown-plugin-gfm'
       toastEl.style.background = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`
       toastEl.style.borderRadius = style.borderRadius + 'px'
     }
-    // Replace attachEvents() with:
     function attachEvents() {
       // Text selection
       document.addEventListener('mouseup', handleMouseUp)
       document.addEventListener('mousedown', handleMouseDown)
-      document.addEventListener('scroll', handleScroll, { passive: true })
+      // scroll doesn't bubble: capture so inner scroll containers dismiss too
+      document.addEventListener('scroll', handleScroll, { passive: true, capture: true })
+      window.addEventListener('resize', handleScroll, { passive: true })
 
       // Image hover tracking
       document.addEventListener('mouseover', handleImageMouseOver)
@@ -266,15 +269,15 @@ import { gfm } from 'turndown-plugin-gfm'
         wake()
       })
     }
-    // Replace handleImageClick with these three functions:
-
     function handleImageMouseOver(e) {
+      // mouseover fires on every element the cursor crosses; bail before
+      // touching timers unless it's actually an image
+      const target = e.target
+      if (!(target instanceof HTMLImageElement)) return
       if (!chrome.runtime?.id) return
       clearTimeout(hoverTimeout)
       hoverTimeout = setTimeout(() => {
         if (!chrome.runtime?.id) return
-        const target = e.target
-        if (!(target instanceof HTMLImageElement)) return
         if (hostEl && hostEl.contains(target)) return
         hoveredImage = target
       }, 50)
@@ -329,11 +332,13 @@ import { gfm } from 'turndown-plugin-gfm'
       const mx = e.clientX - rect.left
       const my = e.clientY - rect.top
       let hoveredIndex = -1
-      buttons.forEach((btn, i) => {
+      for (let i = 0; i < buttons.length; i++) {
+        const btn = buttons[i]
         if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
           hoveredIndex = i
+          break
         }
-      })
+      }
       if (animState.hoveredButtonIndex !== hoveredIndex) {
         animState.hoveredButtonIndex = hoveredIndex
         wake()
@@ -346,6 +351,8 @@ import { gfm } from 'turndown-plugin-gfm'
       if (!chrome.runtime?.id) return
       // Only Control, not Ctrl+C / Ctrl+V / etc.
       if (e.key !== 'Control' || e.ctrlKey === false) return
+      // Holding Ctrl auto-repeats keydown; don't rebuild the canvas every repeat
+      if (e.repeat) return
       if (!hoveredImage) return
 
       const resolved = resolveImageUrl(hoveredImage.src)
@@ -389,7 +396,9 @@ import { gfm } from 'turndown-plugin-gfm'
 
     function showToast(rect) {
       const { style } = config
-      const contextBtns = getContextButtons()
+      // Resolve context/regex filtering once per show, not every frame
+      activeButtons = getContextButtons()
+      const contextBtns = activeButtons
       const baseBtnSize = style.iconSize + style.iconPadding * 2
       const count = contextBtns.length
       if (count === 0) return
@@ -493,7 +502,7 @@ import { gfm } from 'turndown-plugin-gfm'
       toastEl.style.transform = `scale(${springs.scale.val})`
       animState.opacity = springs.opacity.val
       animState.scale = springs.scale.val
-      const contextBtns = getContextButtons()
+      const contextBtns = activeButtons
       // Ensure springs.buttons is sized to current context button count
       while (springs.buttons.length < contextBtns.length) {
         springs.buttons.push({
@@ -520,7 +529,7 @@ import { gfm } from 'turndown-plugin-gfm'
     }
     function draw() {
       const { style } = config
-      const contextBtns = getContextButtons()
+      const contextBtns = activeButtons
       const dpr = window.devicePixelRatio || 1
       ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
       const baseBtnSize = style.iconSize + style.iconPadding * 2
@@ -576,10 +585,10 @@ import { gfm } from 'turndown-plugin-gfm'
       })
     }
     // --- Icon Loading ---
+    // Percent-encoding avoids the base64 path, whose fromCharCode(...bytes)
+    // spread overflows the call stack on large pasted SVGs
     function svgToDataUri(svgStr) {
-      const bytes = new TextEncoder().encode(svgStr)
-      const binStr = String.fromCharCode(...bytes)
-      return 'data:image/svg+xml;charset=utf-8;base64,' + window.btoa(binStr)
+      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr)
     }
     function loadSingleIcon(btn) {
       return new Promise(resolve => {
@@ -626,8 +635,14 @@ import { gfm } from 'turndown-plugin-gfm'
       })
     }
 
-    function handleCanvasDown() {
-      if (animState.hoveredButtonIndex !== -1) isMouseDown = true
+    function handleCanvasDown(e) {
+      // Keep the page's highlight intact while clicking the toast; otherwise
+      // the default mousedown action collapses the user's selection
+      e.preventDefault()
+      if (animState.hoveredButtonIndex !== -1) {
+        isMouseDown = true
+        wake()
+      }
     }
     async function handleCanvasUp() {
       if (!chrome.runtime?.id) return
@@ -639,7 +654,7 @@ import { gfm } from 'turndown-plugin-gfm'
       const { type, url, action } = btn.data
 
       if (type === 'link') {
-        const targetUrl = url.includes('%s') ? url.replace('%s', encodeURIComponent(currentSelection)) : url
+        const targetUrl = url.includes('%s') ? url.replaceAll('%s', encodeURIComponent(currentSelection)) : url
         window.open(targetUrl, '_blank')
       } else if (type === 'image-search') {
         handleImageSearch(url)
@@ -714,7 +729,7 @@ import { gfm } from 'turndown-plugin-gfm'
         )
         return
       }
-      const targetUrl = urlTemplate.replace(
+      const targetUrl = urlTemplate.replaceAll(
         '%s',
         encodeURIComponent(imageContext.resolvedUrl)
       )

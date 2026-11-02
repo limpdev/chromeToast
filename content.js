@@ -1,831 +1,882 @@
-import TurndownService from 'turndown'
-import { gfm } from 'turndown-plugin-gfm'
+import TurndownService from "turndown";
+import { gfm } from "turndown-plugin-gfm";
 
-  // content.js - Toast Selection Popup (Hybrid DOM + Canvas)
-  ; (function () {
-    'use strict'
-    // --- Global State ---
-    let hostEl, shadow, toastEl, canvas, ctx
-    let isAwake = false
-    let hoverTimeout = null
-    let currentSelection = ''
-    let selectionRange = null
-    let isVisible = false
-    let animationId = null
-    let selectionRafId = null  // fix mouse click handling
-    let buttons = []
-    let activeButtons = [] // context-filtered config.buttons for the current show
-    let loadedIcons = {}
-    let iconsReady = false
-    let isMouseDown = false
-    // Context: 'text' | 'image'
-    let currentContext = 'text'
-    let imageContext = { src: null, resolvedUrl: null, isAccessible: true }
-    let hoveredImage = null // <img> element the cursor is currently over
-    // Animation State
-    const animState = {
-      buttonHovers: [],
-      buttonActive: [],
-      opacity: 0,
-      hoveredButtonIndex: -1,
-      scale: 0.8
+// content.js - Toast Selection Popup (Hybrid DOM + Canvas)
+(function () {
+  "use strict";
+  // --- Global State ---
+  let hostEl, shadow, toastEl, canvas, ctx;
+  let isAwake = false;
+  let hoverTimeout = null;
+  let currentSelection = "";
+  let selectionRange = null;
+  let isVisible = false;
+  let animationId = null;
+  let selectionRafId = null; // fix mouse click handling
+  let buttons = [];
+  let activeButtons = []; // context-filtered config.buttons for the current show
+  let loadedIcons = {};
+  let iconsReady = false;
+  let isMouseDown = false;
+  // Context: 'text' | 'image'
+  let currentContext = "text";
+  let imageContext = { src: null, resolvedUrl: null, isAccessible: true };
+  let hoveredImage = null; // <img> element the cursor is currently over
+  // Animation State
+  let iniScale = 0.3;
+  const animState = {
+    buttonHovers: [],
+    buttonActive: [],
+    opacity: 0,
+    hoveredButtonIndex: -1,
+    scale: iniScale,
+  };
+  const springs = {
+    opacity: { val: 0, vel: 0 },
+    scale: { val: iniScale, vel: 0 },
+    buttons: [],
+  };
+  const SPRING_STIFFNESS = 180;
+  const SPRING_DAMPING = 18;
+  const HOVER_STIFFNESS = 210;
+  const HOVER_DAMPING = 20;
+  let lastTime = null;
+  function stepSpring(spring, target, stiffness, damping, dt) {
+    const force = -stiffness * (spring.val - target);
+    const dampen = -damping * spring.vel;
+    spring.vel += (force + dampen) * dt;
+    spring.val += spring.vel * dt;
+    if (Math.abs(spring.val - target) < 0.001 && Math.abs(spring.vel) < 0.001) {
+      spring.val = target;
+      spring.vel = 0;
     }
-    const springs = {
-      opacity: { val: 0, vel: 0 },
-      scale: { val: 0.8, vel: 0 },
-      buttons: []
-    }
-    const SPRING_STIFFNESS = 280
-    const SPRING_DAMPING = 22
-    const HOVER_STIFFNESS = 320
-    const HOVER_DAMPING = 26
-    let lastTime = null
-    function stepSpring(spring, target, stiffness, damping, dt) {
-      const force = -stiffness * (spring.val - target)
-      const dampen = -damping * spring.vel
-      spring.vel += (force + dampen) * dt
-      spring.val += spring.vel * dt
-      if (Math.abs(spring.val - target) < 0.001 && Math.abs(spring.vel) < 0.001) {
-        spring.val = target
-        spring.vel = 0
-      }
-    }
+  }
 
-    const turndownService = new TurndownService({
-      headingStyle: 'atx',
-      bulletListMarker: '-',
-      codeBlockStyle: 'fenced',
-      fence: '```',
-      hr: '---',
-      linkStyle: 'inlined'
-    })
-    turndownService.use(gfm)
-    turndownService.addRule('removeHidden', {
-      filter: el =>
-        el.style &&
-        (el.style.display === 'none' || el.style.visibility === 'hidden'),
-      replacement: () => ''
-    })
-    turndownService.addRule('lineBreak', {
-      filter: 'br',
-      replacement: () => '  \n'
-    })
+  const turndownService = new TurndownService({
+    headingStyle: "atx",
+    bulletListMarker: "-",
+    codeBlockStyle: "fenced",
+    fence: "```",
+    hr: "---",
+    linkStyle: "inlined",
+  });
+  turndownService.use(gfm);
+  turndownService.addRule("removeHidden", {
+    filter: (el) =>
+      el.style &&
+      (el.style.display === "none" || el.style.visibility === "hidden"),
+    replacement: () => "",
+  });
+  turndownService.addRule("lineBreak", {
+    filter: "br",
+    replacement: () => "  \n",
+  });
 
-    // --- Default Configuration ---
-    const defaultConfig = {
-      style: {
-        bgColor: '#1b1c1d',
-        bgOpacity: 0.75,
-        hoverColor: '#696969',
-        hoverOpacity: 0.33,
-        borderRadius: 9,
-        buttonRadius: 6,
-        padding: 3,
-        iconSize: 16,
-        buttonSpacing: 12,
-        iconPadding: 4,
-        hoverScale: 1.15,
-        activeScale: 0.9,
-        iconLift: 2
+  // --- Default Configuration ---
+  const defaultConfig = {
+    style: {
+      bgColor: "#1b1c1d",
+      bgOpacity: 0.75,
+      hoverColor: "#696969",
+      hoverOpacity: 0.33,
+      borderRadius: 9,
+      buttonRadius: 6,
+      padding: 3,
+      iconSize: 16,
+      buttonSpacing: 12,
+      iconPadding: 4,
+      hoverScale: 1.15,
+      activeScale: 0.9,
+      iconLift: 2,
+    },
+    buttons: [
+      {
+        id: "copy",
+        type: "action",
+        action: "copy",
+        contexts: ["text", "image"],
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.556 13.218a2.67 2.67 0 01-3.774-3.774l2.359-2.36a2.67 2.67 0 013.628-.135m-.325-3.167a2.669 2.669 0 113.774 3.774l-2.359 2.36a2.67 2.67 0 01-3.628.135"/><path d="M10.5 3c-3.287 0-4.931 0-6.037.908a4 4 0 00-.555.554C3 5.57 3 7.212 3 10.5V13c0 3.771 0 5.657 1.172 6.828S7.229 21 11 21h2.5c3.287 0 4.931 0 6.038-.908q.304-.25.554-.554C21 18.43 21 16.788 21 13.5"/></g></svg>',
       },
-      buttons: [
-        {
-          id: 'copy',
-          type: 'action',
-          action: 'copy',
-          contexts: ['text', 'image'],
-          icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.556 13.218a2.67 2.67 0 01-3.774-3.774l2.359-2.36a2.67 2.67 0 013.628-.135m-.325-3.167a2.669 2.669 0 113.774 3.774l-2.359 2.36a2.67 2.67 0 01-3.628.135"/><path d="M10.5 3c-3.287 0-4.931 0-6.037.908a4 4 0 00-.555.554C3 5.57 3 7.212 3 10.5V13c0 3.771 0 5.657 1.172 6.828S7.229 21 11 21h2.5c3.287 0 4.931 0 6.038-.908q.304-.25.554-.554C21 18.43 21 16.788 21 13.5"/></g></svg>'
-        },
-        {
-          id: 'markdown',
-          type: 'action',
-          action: 'markdown',
-          markdownSource: 'selection',
-          contexts: ['text'],
-          icon: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 16 16"><g fill="#b5b5b5"><path d="M14 3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM2 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><path fill-rule="evenodd" d="M9.146 8.146a.5.5 0 0 1 .708 0L11.5 9.793l1.646-1.647a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 0 1 0-.708"/><path fill-rule="evenodd" d="M11.5 5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5"/><path d="M3.56 11V7.01h.056l1.428 3.239h.774l1.42-3.24h.056V11h1.073V5.001h-1.2l-1.71 3.894h-.039l-1.71-3.894H2.5V11z"/></g></svg>'
-        },
-        {
-          id: 'google-text',
-          type: 'link',
-          url: 'https://www.google.com/search?q=%s',
-          contexts: ['text'],
-          icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5"><circle cx="11" cy="11" r="6"/><path stroke-linecap="round" d="M11 8a3 3 0 00-3 3m12 9l-3-3"/></g></svg>'
-        },
-        {
-          id: 'google-lens',
-          type: 'image-search',
-          url: 'https://lens.google.com/uploadbyurl?url=%s',
-          contexts: ['image'],
-          icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M3 9V6.5A2.5 2.5 0 015.5 4H8M3 15v2.5A2.5 2.5 0 005.5 20H8m8-16h2.5A2.5 2.5 0 0121 6.5V9m0 6v2.5a2.5 2.5 0 01-2.5 2.5H16"/></g></svg>'
-        }
-      ]
-    }
+      {
+        id: "markdown",
+        type: "action",
+        action: "markdown",
+        markdownSource: "selection",
+        contexts: ["text"],
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 16 16"><g fill="#b5b5b5"><path d="M14 3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM2 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><path fill-rule="evenodd" d="M9.146 8.146a.5.5 0 0 1 .708 0L11.5 9.793l1.646-1.647a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 0 1 0-.708"/><path fill-rule="evenodd" d="M11.5 5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5"/><path d="M3.56 11V7.01h.056l1.428 3.239h.774l1.42-3.24h.056V11h1.073V5.001h-1.2l-1.71 3.894h-.039l-1.71-3.894H2.5V11z"/></g></svg>',
+      },
+      {
+        id: "google-text",
+        type: "link",
+        url: "https://www.google.com/search?q=%s",
+        contexts: ["text"],
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5"><circle cx="11" cy="11" r="6"/><path stroke-linecap="round" d="M11 8a3 3 0 00-3 3m12 9l-3-3"/></g></svg>',
+      },
+      {
+        id: "google-lens",
+        type: "image-search",
+        url: "https://lens.google.com/uploadbyurl?url=%s",
+        contexts: ["image"],
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="none" stroke="#d5d5d5" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M3 9V6.5A2.5 2.5 0 015.5 4H8M3 15v2.5A2.5 2.5 0 005.5 20H8m8-16h2.5A2.5 2.5 0 0121 6.5V9m0 6v2.5a2.5 2.5 0 01-2.5 2.5H16"/></g></svg>',
+      },
+    ],
+  };
 
-    let config = JSON.parse(JSON.stringify(defaultConfig))
-    // --- Helpers ---
-    const hexToRgbCache = new Map()
-    function hexToRgb(hex) {
-      if (hexToRgbCache.has(hex)) return hexToRgbCache.get(hex)
-      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-      const rgb = result
-        ? {
+  let config = JSON.parse(JSON.stringify(defaultConfig));
+  // --- Helpers ---
+  const hexToRgbCache = new Map();
+  function hexToRgb(hex) {
+    if (hexToRgbCache.has(hex)) return hexToRgbCache.get(hex);
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    const rgb = result
+      ? {
           r: parseInt(result[1], 16),
           g: parseInt(result[2], 16),
-          b: parseInt(result[3], 16)
+          b: parseInt(result[3], 16),
         }
-        : { r: 0, g: 0, b: 0 }
-      hexToRgbCache.set(hex, rgb)
-      return rgb
+      : { r: 0, g: 0, b: 0 };
+    hexToRgbCache.set(hex, rgb);
+    return rgb;
+  }
+  // Resolves an <img> src to an absolute URL.
+  // Returns null if the src is a data: or blob: URI (not usable by remote engines).
+  function resolveImageUrl(src) {
+    if (!src) return null;
+    if (src.startsWith("data:") || src.startsWith("blob:")) return null;
+    try {
+      return new URL(src, document.baseURI).href;
+    } catch {
+      return null;
     }
-    // Resolves an <img> src to an absolute URL.
-    // Returns null if the src is a data: or blob: URI (not usable by remote engines).
-    function resolveImageUrl(src) {
-      if (!src) return null
-      if (src.startsWith('data:') || src.startsWith('blob:')) return null
-      try {
-        return new URL(src, document.baseURI).href
-      } catch {
-        return null
-      }
+  }
+  // --- Initialization ---
+  // Config lives in storage.local (sync caps a single item at 8 KB, which a
+  // couple of custom SVG icons blow through). Older installs saved to sync,
+  // so fall back to it when local is empty.
+  const CONFIG_KEY = "canvasToastConfig";
+  function loadConfig(cb) {
+    chrome.storage.local.get([CONFIG_KEY], (local) => {
+      if (local[CONFIG_KEY]) return cb(local[CONFIG_KEY]);
+      chrome.storage.sync.get([CONFIG_KEY], (synced) => cb(synced[CONFIG_KEY]));
+    });
+  }
+  function init() {
+    loadConfig((saved) => {
+      applyConfig(saved);
+      setupDOM();
+      loadIcons();
+      attachEvents();
+    });
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes[CONFIG_KEY]) return;
+      applyConfig(changes[CONFIG_KEY].newValue);
+      loadIcons();
+      applyWrapperStyles();
+      // Geometry may have changed; dismiss rather than draw into a stale canvas size
+      if (isVisible) hideToast();
+    });
+  }
+  function applyConfig(newConfig) {
+    if (!newConfig) return;
+    config.buttons =
+      newConfig.buttons && newConfig.buttons.length > 0
+        ? newConfig.buttons
+        : defaultConfig.buttons;
+    // Migrate the legacy markdown icon to the current one
+    const mdDefault = defaultConfig.buttons.find(
+      (b) => b.id === "markdown",
+    ).icon;
+    config.buttons = config.buttons.map((btn) =>
+      btn.id === "markdown" &&
+      btn.icon &&
+      !btn.icon.includes('viewBox="0 0 16 16"')
+        ? { ...btn, icon: mdDefault }
+        : btn,
+    );
+    if (newConfig.style) {
+      config.style = { ...defaultConfig.style, ...newConfig.style };
     }
-    // --- Initialization ---
-    // Config lives in storage.local (sync caps a single item at 8 KB, which a
-    // couple of custom SVG icons blow through). Older installs saved to sync,
-    // so fall back to it when local is empty.
-    const CONFIG_KEY = 'canvasToastConfig'
-    function loadConfig(cb) {
-      chrome.storage.local.get([CONFIG_KEY], local => {
-        if (local[CONFIG_KEY]) return cb(local[CONFIG_KEY])
-        chrome.storage.sync.get([CONFIG_KEY], synced => cb(synced[CONFIG_KEY]))
-      })
-    }
-    function init() {
-      loadConfig(saved => {
-        applyConfig(saved)
-        setupDOM()
-        loadIcons()
-        attachEvents()
-      })
-      chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== 'local' || !changes[CONFIG_KEY]) return
-        applyConfig(changes[CONFIG_KEY].newValue)
-        loadIcons()
-        applyWrapperStyles()
-        // Geometry may have changed; dismiss rather than draw into a stale canvas size
-        if (isVisible) hideToast()
-      })
-    }
-    function applyConfig(newConfig) {
-      if (!newConfig) return
-      config.buttons =
-        newConfig.buttons && newConfig.buttons.length > 0
-          ? newConfig.buttons
-          : defaultConfig.buttons
-      // Migrate the legacy markdown icon to the current one
-      const mdDefault = defaultConfig.buttons.find(b => b.id === 'markdown').icon
-      config.buttons = config.buttons.map(btn =>
-        btn.id === 'markdown' && btn.icon && !btn.icon.includes('viewBox="0 0 16 16"')
-          ? { ...btn, icon: mdDefault }
-          : btn
-      )
-      if (newConfig.style) {
-        config.style = { ...defaultConfig.style, ...newConfig.style }
-      }
-    }
-    // --- DOM Setup ---
-    function setupDOM() {
-      if (hostEl && document.body.contains(hostEl)) {
-        document.body.removeChild(hostEl)
-      }
-
-      hostEl = document.createElement('div')
-      hostEl.id = 'toast-extension-root'
-      // `all: initial` must come first: it's a shorthand that resets every
-      // longhand, so applying it last wiped the z-index and positioning.
-      // A fixed, max-z host makes the toast its own top-level stacking context.
-      hostEl.style.cssText =
-        'all:initial;position:fixed;top:0;left:0;width:0;height:0;' +
-        'z-index:2147483647;pointer-events:none;'
-
-      shadow = hostEl.attachShadow({ mode: 'closed' })
-
-      toastEl = document.createElement('div')
-      Object.assign(toastEl.style, {
-        position: 'fixed',
-        display: 'none',
-        pointerEvents: 'none',
-        cursor: 'pointer',
-        backdropFilter: 'blur(4px)',
-        webkitBackdropFilter: 'blur(4px)',
-        border: '0.5px solid rgba(255, 255, 255, 0.12)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
-        transformOrigin: 'center center',
-        overflow: 'hidden',
-        willChange: 'transform, opacity',
-        opacity: '0',
-        transform: 'scale(0.7)'
-      })
-
-      canvas = document.createElement('canvas')
-      Object.assign(canvas.style, {
-        display: 'block',
-        pointerEvents: 'none'
-      })
-
-      toastEl.appendChild(canvas)
-      shadow.appendChild(toastEl)
-      document.body.appendChild(hostEl)
-      ctx = canvas.getContext('2d', { alpha: true })
-    }
-    function applyWrapperStyles() {
-      if (!toastEl) return
-      const { style } = config
-      const bgRgb = hexToRgb(style.bgColor)
-      toastEl.style.background = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`
-      toastEl.style.borderRadius = style.borderRadius + 'px'
-    }
-    function attachEvents() {
-      // Text selection
-      document.addEventListener('mouseup', handleMouseUp)
-      document.addEventListener('mousedown', handleMouseDown)
-      // scroll doesn't bubble: capture so inner scroll containers dismiss too
-      document.addEventListener('scroll', handleScroll, { passive: true, capture: true })
-      window.addEventListener('resize', handleScroll, { passive: true })
-
-      // Image hover tracking
-      document.addEventListener('mouseover', handleImageMouseOver)
-      document.addEventListener('mouseout', handleImageMouseOut)
-
-      // Ctrl+hover trigger
-      document.addEventListener('keydown', handleKeyDown)
-
-      // Canvas interactions
-      canvas.addEventListener('mousemove', handleMouseMove)
-      canvas.addEventListener('mousedown', handleCanvasDown)
-      canvas.addEventListener('mouseup', handleCanvasUp)
-      toastEl.addEventListener('mouseleave', () => {
-        animState.hoveredButtonIndex = -1
-        isMouseDown = false
-        wake()
-      })
-    }
-    function handleImageMouseOver(e) {
-      // mouseover fires on every element the cursor crosses; bail before
-      // touching timers unless it's actually an image
-      const target = e.target
-      if (!(target instanceof HTMLImageElement)) return
-      if (!chrome.runtime?.id) return
-      clearTimeout(hoverTimeout)
-      hoverTimeout = setTimeout(() => {
-        if (!chrome.runtime?.id) return
-        if (hostEl && hostEl.contains(target)) return
-        hoveredImage = target
-      }, 50)
+  }
+  // --- DOM Setup ---
+  function setupDOM() {
+    if (hostEl && document.body.contains(hostEl)) {
+      document.body.removeChild(hostEl);
     }
 
-    function handleImageMouseOut(e) {
-      if (!chrome.runtime?.id) return
-      const target = e.target
-      if (!(target instanceof HTMLImageElement)) return
-      if (hostEl && hostEl.contains(e.relatedTarget)) return
-      if (target === hoveredImage) hoveredImage = null
-    }
+    hostEl = document.createElement("div");
+    hostEl.id = "toast-extension-root";
+    // `all: initial` must come first: it's a shorthand that resets every
+    // longhand, so applying it last wiped the z-index and positioning.
+    // A fixed, max-z host makes the toast its own top-level stacking context.
+    hostEl.style.cssText =
+      "all:initial;position:fixed;top:0;left:0;width:0;height:0;" +
+      "z-index:2147483647;pointer-events:none;";
 
-    function handleMouseUp(e) {
-      if (!chrome.runtime?.id) return
-      if (hostEl && hostEl.contains(e.target)) return
-      if (selectionRafId) cancelAnimationFrame(selectionRafId)
-      selectionRafId = requestAnimationFrame(() => {
-        if (!chrome.runtime?.id) return
-        selectionRafId = null
-        const sel = window.getSelection()
-        if (!sel || sel.rangeCount === 0) return
-        const text = sel.toString().trim()
-        if (text.length > 0) {
-          currentContext = 'text'
-          currentSelection = text
-          imageContext = { src: null, resolvedUrl: null, isAccessible: true }
-          try {
-            selectionRange = sel.getRangeAt(0).cloneRange()
-            const rect = selectionRange.getBoundingClientRect()
-            if (rect.width === 0 && rect.height === 0) return
-            showToast(rect)
-          } catch (err) {
-            console.error('[Toast] Range error', err)
-          }
-        } else {
-          if (!isMouseDown) hideToast()
-        }
-      })
-    }
+    shadow = hostEl.attachShadow({ mode: "closed" });
 
-    function handleMouseDown(e) {
-      if (!chrome.runtime?.id) return
-      if (isVisible && hostEl && !hostEl.contains(e.target)) {
-        hideToast()
-      }
-    }
+    toastEl = document.createElement("div");
+    Object.assign(toastEl.style, {
+      position: "fixed",
+      display: "none",
+      pointerEvents: "none",
+      cursor: "pointer",
+      backdropFilter: "blur(4px)",
+      webkitBackdropFilter: "blur(4px)",
+      border: "0.5px solid rgba(255, 255, 255, 0.12)",
+      boxShadow: "0 8px 32px rgba(0, 0, 0, 0.35)",
+      transformOrigin: "center center",
+      overflow: "hidden",
+      willChange: "transform, opacity",
+      opacity: "0",
+      transform: "scale(0.7)",
+    });
 
-    function handleMouseMove(e) {
-      if (!isVisible) return
-      const rect = canvas.getBoundingClientRect()
-      const mx = e.clientX - rect.left
-      const my = e.clientY - rect.top
-      let hoveredIndex = -1
-      for (let i = 0; i < buttons.length; i++) {
-        const btn = buttons[i]
-        if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
-          hoveredIndex = i
-          break
-        }
-      }
-      if (animState.hoveredButtonIndex !== hoveredIndex) {
-        animState.hoveredButtonIndex = hoveredIndex
-        wake()
-      }
-      // canvas.style.cursor = hoveredIndex !== -1 ? 'pointer' : 'default'
-      canvas.style.cursor = 'pointer'
-    }
+    canvas = document.createElement("canvas");
+    Object.assign(canvas.style, {
+      display: "block",
+      pointerEvents: "none",
+    });
 
-    function handleKeyDown(e) {
-      if (!chrome.runtime?.id) return
-      // Only Control, not Ctrl+C / Ctrl+V / etc.
-      if (e.key !== 'Control' || e.ctrlKey === false) return
-      // Holding Ctrl auto-repeats keydown; don't rebuild the canvas every repeat
-      if (e.repeat) return
-      if (!hoveredImage) return
+    toastEl.appendChild(canvas);
+    shadow.appendChild(toastEl);
+    document.body.appendChild(hostEl);
+    ctx = canvas.getContext("2d", { alpha: true });
+  }
+  function applyWrapperStyles() {
+    if (!toastEl) return;
+    const { style } = config;
+    const bgRgb = hexToRgb(style.bgColor);
+    toastEl.style.background = `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${style.bgOpacity})`;
+    toastEl.style.borderRadius = style.borderRadius + "px";
+  }
+  function attachEvents() {
+    // Text selection
+    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("mousedown", handleMouseDown);
+    // scroll doesn't bubble: capture so inner scroll containers dismiss too
+    document.addEventListener("scroll", handleScroll, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener("resize", handleScroll, { passive: true });
 
-      const resolved = resolveImageUrl(hoveredImage.src)
-      imageContext = {
-        src: hoveredImage.src,
-        resolvedUrl: resolved,
-        isAccessible: resolved !== null
-      }
-      currentContext = 'image'
-      window.getSelection()?.removeAllRanges()
-      currentSelection = ''
+    // Image hover tracking
+    document.addEventListener("mouseover", handleImageMouseOver);
+    document.addEventListener("mouseout", handleImageMouseOut);
 
-      const rect = hoveredImage.getBoundingClientRect()
-      showToast(rect)
-    }
+    // Ctrl+hover trigger
+    document.addEventListener("keydown", handleKeyDown);
 
-    function handleScroll() {
-      if (!chrome.runtime?.id) return
-      if (isVisible) hideToast()
-    }
-    // --- Toast Lifecycle ---
-    function getContextButtons() {
-      return config.buttons.filter(btn => {
-        const contexts = btn.contexts
-        const hasContext = (!contexts || contexts.length === 0) ? currentContext === 'text' : contexts.includes(currentContext)
+    // Canvas interactions
+    canvas.addEventListener("mousemove", handleMouseMove);
+    canvas.addEventListener("mousedown", handleCanvasDown);
+    canvas.addEventListener("mouseup", handleCanvasUp);
+    toastEl.addEventListener("mouseleave", () => {
+      animState.hoveredButtonIndex = -1;
+      isMouseDown = false;
+      wake();
+    });
+  }
+  function handleImageMouseOver(e) {
+    // mouseover fires on every element the cursor crosses; bail before
+    // touching timers unless it's actually an image
+    const target = e.target;
+    if (!(target instanceof HTMLImageElement)) return;
+    if (!chrome.runtime?.id) return;
+    clearTimeout(hoverTimeout);
+    hoverTimeout = setTimeout(() => {
+      if (!chrome.runtime?.id) return;
+      if (hostEl && hostEl.contains(target)) return;
+      hoveredImage = target;
+    }, 50);
+  }
 
-        if (!hasContext) return false
+  function handleImageMouseOut(e) {
+    if (!chrome.runtime?.id) return;
+    const target = e.target;
+    if (!(target instanceof HTMLImageElement)) return;
+    if (hostEl && hostEl.contains(e.relatedTarget)) return;
+    if (target === hoveredImage) hoveredImage = null;
+  }
 
-        if (btn.regex && currentContext === 'text') {
-          try {
-            const rgx = new RegExp(btn.regex, 'i')
-            return rgx.test(currentSelection)
-          } catch (e) {
-            return false
-          }
-        }
-
-        return true
-      })
-    }
-
-    function showToast(rect) {
-      const { style } = config
-      // Resolve context/regex filtering once per show, not every frame
-      activeButtons = getContextButtons()
-      const contextBtns = activeButtons
-      const baseBtnSize = style.iconSize + style.iconPadding * 2
-      const count = contextBtns.length
-      if (count === 0) return
-      const totalWidth = style.padding * 2 + baseBtnSize * count + style.buttonSpacing * (count - 1)
-      const totalHeight = style.padding * 2 + baseBtnSize
-      const dpr = window.devicePixelRatio || 1
-      canvas.style.width = totalWidth + 'px'
-      canvas.style.height = totalHeight + 'px'
-      canvas.width = totalWidth * dpr
-      canvas.height = totalHeight * dpr
-      ctx.setTransform(1, 0, 0, 1, 0, 0)
-      ctx.scale(dpr, dpr)
-      toastEl.style.width = totalWidth + 'px'
-      toastEl.style.height = totalHeight + 'px'
-      applyWrapperStyles()
-
-      let left = rect.left + rect.width / 2 - totalWidth / 2
-      let top = currentContext === 'image' ? rect.top - totalHeight - 16 : rect.top - totalHeight - 16
-      if (top < 8) top = rect.bottom + 16
-      if (left < 10) left = 10
-      if (left + totalWidth > window.innerWidth - 10) left = window.innerWidth - totalWidth - 10
-
-      toastEl.style.left = left + 'px'
-      toastEl.style.top = top + 'px'
-      toastEl.style.display = 'block'
-      toastEl.style.pointerEvents = 'auto'
-      canvas.style.pointerEvents = 'auto'
-
-      if (!isVisible) {
-        isVisible = true
-        springs.opacity.val = 0
-        springs.opacity.vel = 0
-        springs.scale.val = 0.8
-        springs.scale.vel = 0
-        toastEl.style.opacity = '0'
-        toastEl.style.transform = 'scale(0.8)'
-      }
-      wake()
-    }
-
-    function hideToast() {
-      isVisible = false
-      toastEl.style.pointerEvents = 'none'
-      canvas.style.pointerEvents = 'none'
-      animState.hoveredButtonIndex = -1
-      isMouseDown = false
-      wake()
-    }
-    // --- Animation Loop ---
-    function wake() {
-      if (!isAwake) {
-        isAwake = true
-        lastTime = null
-        if (animationId) cancelAnimationFrame(animationId)
-        animationId = requestAnimationFrame(loop)
-      }
-    }
-
-    function loop(timestamp) {
-      if (!lastTime) lastTime = timestamp
-      const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
-      lastTime = timestamp
-
-      updateState(dt)
-      draw()
-
-      // Must check BOTH velocity AND distance to target so springs don't sleep mid-bounce
-      const opacityTarget = isVisible ? 1 : 0
-      const scaleTarget = isVisible ? 1 : 0.9
-
-      const opacityMoving = Math.abs(springs.opacity.vel) > 0.01 || Math.abs(springs.opacity.val - opacityTarget) > 0.01
-      const scaleMoving = Math.abs(springs.scale.vel) > 0.01 || Math.abs(springs.scale.val - scaleTarget) > 0.01
-
-      const buttonsMoving = springs.buttons.some((b, i) => {
-        const hoverTarget = animState.hoveredButtonIndex === i ? 1 : 0
-        const activeTarget = (animState.hoveredButtonIndex === i && isMouseDown) ? 1 : 0
-        return Math.abs(b.hover.vel) > 0.01 || Math.abs(b.hover.val - hoverTarget) > 0.01 ||
-          Math.abs(b.active.vel) > 0.01 || Math.abs(b.active.val - activeTarget) > 0.01
-      })
-
-      if (opacityMoving || scaleMoving || buttonsMoving) {
-        animationId = requestAnimationFrame(loop)
-      } else {
-        isAwake = false
-        animationId = null
-        if (!isVisible) toastEl.style.display = 'none'
-      }
-    }
-    function updateState(dt) {
-      const targetOpacity = isVisible ? 1 : 0
-      const targetScale = isVisible ? 1 : 0.9
-      stepSpring(
-        springs.opacity,
-        targetOpacity,
-        SPRING_STIFFNESS,
-        SPRING_DAMPING,
-        dt
-      )
-      stepSpring(springs.scale, targetScale, SPRING_STIFFNESS, SPRING_DAMPING, dt)
-      toastEl.style.opacity = springs.opacity.val
-      toastEl.style.transform = `scale(${springs.scale.val})`
-      animState.opacity = springs.opacity.val
-      animState.scale = springs.scale.val
-      const contextBtns = activeButtons
-      // Ensure springs.buttons is sized to current context button count
-      while (springs.buttons.length < contextBtns.length) {
-        springs.buttons.push({
-          hover: { val: 0, vel: 0 },
-          active: { val: 0, vel: 0 }
-        })
-      }
-      contextBtns.forEach((_, i) => {
-        const sb = springs.buttons[i]
-        if (!sb) return
-        const isHover = animState.hoveredButtonIndex === i
-        const isActive = isHover && isMouseDown
-        stepSpring(sb.hover, isHover ? 1 : 0, HOVER_STIFFNESS, HOVER_DAMPING, dt)
-        stepSpring(
-          sb.active,
-          isActive ? 1 : 0,
-          HOVER_STIFFNESS * 1.5,
-          HOVER_DAMPING * 1.2,
-          dt
-        )
-        animState.buttonHovers[i] = sb.hover.val
-        animState.buttonActive[i] = sb.active.val
-      })
-    }
-    function draw() {
-      const { style } = config
-      const contextBtns = activeButtons
-      const dpr = window.devicePixelRatio || 1
-      ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
-      const baseBtnSize = style.iconSize + style.iconPadding * 2
-      buttons = []
-      let x = style.padding
-      const y = style.padding
-      contextBtns.forEach((btn, i) => {
-        const hoverVal = animState.buttonHovers[i] ?? 0
-        const activeVal = animState.buttonActive[i] ?? 0
-        const targetScale =
-          1 +
-          hoverVal * (style.hoverScale - 1) -
-          activeVal * (style.hoverScale - style.activeScale)
-        const currentBtnSize = baseBtnSize * targetScale
-        const offset = (baseBtnSize - currentBtnSize) / 2
-        // Hit-test box always uses base size so hover doesn't jitter
-        buttons.push({ x, y, w: baseBtnSize, h: baseBtnSize, data: btn })
-        const bx = x + offset
-        const by = y + offset
-        if (hoverVal > 0.001) {
-          ctx.fillStyle = style.hoverColor
-          ctx.globalAlpha = style.hoverOpacity * hoverVal
-
-          // Use individual override if present, else fallback to global buttonRadius
-          const baseRadius = (btn.borderRadius !== undefined && btn.borderRadius !== null && btn.borderRadius !== '')
-            ? Number(btn.borderRadius)
-            : (style.buttonRadius !== undefined ? style.buttonRadius : 6)
-          const targetRadius = baseRadius * targetScale
-
-          roundRect(
-            ctx,
-            bx,
-            by,
-            currentBtnSize,
-            currentBtnSize,
-            targetRadius
-          )
-          ctx.fill()
-          ctx.globalAlpha = 1
-        }
-        const iconImg = loadedIcons[btn.id]
-        if (iconImg && iconsReady) {
-          const lift = hoverVal * -1 * (style.iconLift || 0)
-          const scaledIconSize = style.iconSize * targetScale
-          const ix = x + (baseBtnSize - scaledIconSize) / 2
-          const iy = y + (baseBtnSize - scaledIconSize) / 2 + lift
-          ctx.filter =
-            hoverVal > 0.001 ? `brightness(${1 + hoverVal * 0.3})` : 'none'
-          ctx.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize)
-          ctx.filter = 'none'
-        }
-        x += baseBtnSize + style.buttonSpacing
-      })
-    }
-    // --- Icon Loading ---
-    // Percent-encoding avoids the base64 path, whose fromCharCode(...bytes)
-    // spread overflows the call stack on large pasted SVGs
-    function svgToDataUri(svgStr) {
-      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr)
-    }
-    function loadSingleIcon(btn) {
-      return new Promise(resolve => {
-        const img = new Image()
-        let src = btn.icon || ''
-        if (src.trim().startsWith('<svg')) {
-          try {
-            src = svgToDataUri(src)
-          } catch (e) {
-            console.error('Icon encoding failed', e)
-            return resolve(null)
-          }
-        }
-        img.onload = () => resolve({ id: btn.id, img })
-        img.onerror = () => {
-          console.warn(`Failed to load icon for ${btn.id}`)
-          resolve(null)
-        }
-        img.src = src
-      })
-    }
-    function loadIcons() {
-      loadedIcons = {}
-      iconsReady = false
-      const total = config.buttons.length
-      // Size springs to the max possible button count (all buttons)
-      // so we never have index gaps regardless of context
-      springs.buttons = config.buttons.map(() => ({
-        hover: { val: 0, vel: 0 },
-        active: { val: 0, vel: 0 }
-      }))
-      animState.buttonHovers = new Array(total).fill(0)
-      animState.buttonActive = new Array(total).fill(0)
-      if (total === 0) {
-        iconsReady = true
-        return
-      }
-      Promise.all(config.buttons.map(loadSingleIcon)).then(results => {
-        results.forEach(r => {
-          if (r) loadedIcons[r.id] = r.img
-        })
-        iconsReady = true
-        if (isVisible) requestAnimationFrame(draw)
-      })
-    }
-
-    function handleCanvasDown(e) {
-      // Keep the page's highlight intact while clicking the toast; otherwise
-      // the default mousedown action collapses the user's selection
-      e.preventDefault()
-      if (animState.hoveredButtonIndex !== -1) {
-        isMouseDown = true
-        wake()
-      }
-    }
-    async function handleCanvasUp() {
-      if (!chrome.runtime?.id) return
-      isMouseDown = false
-      wake()
-      if (animState.hoveredButtonIndex === -1) return
-      const btn = buttons[animState.hoveredButtonIndex]
-      if (!btn) return
-      const { type, url, action } = btn.data
-
-      if (type === 'link') {
-        const targetUrl = url.includes('%s') ? url.replaceAll('%s', encodeURIComponent(currentSelection)) : url
-        window.open(targetUrl, '_blank')
-      } else if (type === 'image-search') {
-        handleImageSearch(url)
-      } else if (type === 'transform') {
-        let text = currentSelection
-        if (action === 'uppercase') text = text.toUpperCase()
-        if (action === 'lowercase') text = text.toLowerCase()
-        if (action === 'urlencode') text = encodeURIComponent(text)
-        if (selectionRange) {
-          selectionRange.deleteContents()
-          selectionRange.insertNode(document.createTextNode(text))
-        }
-      } else if (type === 'webhook') {
-        chrome.runtime.sendMessage({ type: 'WEBHOOK', url: url, text: currentSelection })
-      } else if (type === 'action') {
-        if (action === 'copy') {
-          await handleCopy()
-        } else if (action === 'paste') {
-          try {
-            const text = await navigator.clipboard.readText()
-            if (selectionRange) {
-              selectionRange.deleteContents()
-              selectionRange.insertNode(document.createTextNode(text))
-            }
-          } catch (err) {
-            console.error('[Toast] Paste failed:', err)
-          }
-        } else if (action === 'markdown') {
-          await handleMarkdownCopy(btn.data)
-        }
-      }
-      hideToast()
-    }
-
-    async function handleMarkdownCopy(btn) {
-      if (!chrome.runtime?.id) return
-      const source = btn.markdownSource || 'selection'
-      let htmlPayload = ''
-
-      if (source === 'page') {
-        const clone = document.body.cloneNode(true)
-        const noisy = [
-          'script', 'style', 'noscript', 'iframe', 'nav',
-          'header', 'footer', 'aside', '[aria-hidden="true"]'
-        ]
-        noisy.forEach(sel => {
-          clone.querySelectorAll(sel).forEach(el => el.remove())
-        })
-        const title = document.title.trim()
-        htmlPayload = title ? `<h1>${title}</h1>\n${clone.innerHTML}` : clone.innerHTML
-      } else {
-        if (!selectionRange) return
-        const fragment = selectionRange.cloneContents()
-        const wrapper = document.createElement('div')
-        wrapper.appendChild(fragment)
-        htmlPayload = wrapper.innerHTML
-      }
-
-      try {
-        const markdown = turndownService.turndown(htmlPayload)
-        await navigator.clipboard.writeText(markdown)
-      } catch (err) {
-        console.error('[Toast] Markdown copy failed:', err)
-      }
-    }
-    // --- Action Handlers ---
-    function handleImageSearch(urlTemplate) {
-      if (!imageContext.isAccessible || !imageContext.resolvedUrl) {
-        // data: or blob: URI — can't be fetched by remote engines
-        console.warn(
-          '[Toast] Image search unavailable: image src is a data/blob URI and cannot be resolved by remote search engines.'
-        )
-        return
-      }
-      const targetUrl = urlTemplate.replaceAll(
-        '%s',
-        encodeURIComponent(imageContext.resolvedUrl)
-      )
-      window.open(targetUrl, '_blank')
-    }
-    async function handleCopy() {
-      if (currentContext === 'image') {
-        await copyImage()
-      } else {
+  function handleMouseUp(e) {
+    if (!chrome.runtime?.id) return;
+    if (hostEl && hostEl.contains(e.target)) return;
+    if (selectionRafId) cancelAnimationFrame(selectionRafId);
+    selectionRafId = requestAnimationFrame(() => {
+      if (!chrome.runtime?.id) return;
+      selectionRafId = null;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const text = sel.toString().trim();
+      if (text.length > 0) {
+        currentContext = "text";
+        currentSelection = text;
+        imageContext = { src: null, resolvedUrl: null, isAccessible: true };
         try {
-          await navigator.clipboard.writeText(currentSelection)
+          selectionRange = sel.getRangeAt(0).cloneRange();
+          const rect = selectionRange.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) return;
+          showToast(rect);
         } catch (err) {
-          console.error('[Toast] Copy text failed:', err)
+          console.error("[Toast] Range error", err);
         }
+      } else {
+        if (!isMouseDown) hideToast();
+      }
+    });
+  }
+
+  function handleMouseDown(e) {
+    if (!chrome.runtime?.id) return;
+    if (isVisible && hostEl && !hostEl.contains(e.target)) {
+      hideToast();
+    }
+  }
+
+  function handleMouseMove(e) {
+    if (!isVisible) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    let hoveredIndex = -1;
+    for (let i = 0; i < buttons.length; i++) {
+      const btn = buttons[i];
+      if (
+        mx >= btn.x &&
+        mx <= btn.x + btn.w &&
+        my >= btn.y &&
+        my <= btn.y + btn.h
+      ) {
+        hoveredIndex = i;
+        break;
       }
     }
-    async function copyImage() {
-      const src = imageContext.resolvedUrl || imageContext.src
-      if (!src) return
-      // data: URI — decode and write directly, no fetch needed
-      if (src.startsWith('data:image/png')) {
+    if (animState.hoveredButtonIndex !== hoveredIndex) {
+      animState.hoveredButtonIndex = hoveredIndex;
+      wake();
+    }
+    // canvas.style.cursor = hoveredIndex !== -1 ? 'pointer' : 'default'
+    canvas.style.cursor = "pointer";
+  }
+
+  function handleKeyDown(e) {
+    if (!chrome.runtime?.id) return;
+    // Only Control, not Ctrl+C / Ctrl+V / etc.
+    if (e.key !== "Control" || e.ctrlKey === false) return;
+    // Holding Ctrl auto-repeats keydown; don't rebuild the canvas every repeat
+    if (e.repeat) return;
+    if (!hoveredImage) return;
+
+    const resolved = resolveImageUrl(hoveredImage.src);
+    imageContext = {
+      src: hoveredImage.src,
+      resolvedUrl: resolved,
+      isAccessible: resolved !== null,
+    };
+    currentContext = "image";
+    window.getSelection()?.removeAllRanges();
+    currentSelection = "";
+
+    const rect = hoveredImage.getBoundingClientRect();
+    showToast(rect);
+  }
+
+  function handleScroll() {
+    if (!chrome.runtime?.id) return;
+    if (isVisible) hideToast();
+  }
+  // --- Toast Lifecycle ---
+  function getContextButtons() {
+    return config.buttons.filter((btn) => {
+      const contexts = btn.contexts;
+      const hasContext =
+        !contexts || contexts.length === 0
+          ? currentContext === "text"
+          : contexts.includes(currentContext);
+
+      if (!hasContext) return false;
+
+      if (btn.regex && currentContext === "text") {
         try {
-          const res = await fetch(src)
-          const blob = await res.blob()
-          await navigator.clipboard.write([
-            new ClipboardItem({ 'image/png': blob })
-          ])
-        } catch (err) {
-          console.error('[Toast] Copy image (data URI) failed:', err)
-        }
-        return
-      }
-      // Remote URL — fetch the image. Will fail for cross-origin images
-      // that don't set CORS headers, which is most of the web. We try anyway
-      // and fall back to copying the URL as plain text.
-      try {
-        const res = await fetch(src, { mode: 'cors' })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const blob = await res.blob()
-        // Normalise to PNG since ClipboardItem only reliably accepts image/png
-        const pngBlob = await normaliseToPng(blob)
-        await navigator.clipboard.write([
-          new ClipboardItem({ 'image/png': pngBlob })
-        ])
-      } catch {
-        // CORS or fetch failure — copy the URL instead as a graceful fallback
-        console.warn(
-          '[Toast] Could not fetch image for clipboard, copying URL instead.'
-        )
-        try {
-          await navigator.clipboard.writeText(src)
-        } catch (err) {
-          console.error('[Toast] Fallback URL copy failed:', err)
+          const rgx = new RegExp(btn.regex, "i");
+          return rgx.test(currentSelection);
+        } catch (e) {
+          return false;
         }
       }
+
+      return true;
+    });
+  }
+
+  function showToast(rect) {
+    const { style } = config;
+    // Resolve context/regex filtering once per show, not every frame
+    activeButtons = getContextButtons();
+    const contextBtns = activeButtons;
+    const baseBtnSize = style.iconSize + style.iconPadding * 2;
+    const count = contextBtns.length;
+    if (count === 0) return;
+    const totalWidth =
+      style.padding * 2 +
+      baseBtnSize * count +
+      style.buttonSpacing * (count - 1);
+    const totalHeight = style.padding * 2 + baseBtnSize;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = totalWidth + "px";
+    canvas.style.height = totalHeight + "px";
+    canvas.width = totalWidth * dpr;
+    canvas.height = totalHeight * dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    toastEl.style.width = totalWidth + "px";
+    toastEl.style.height = totalHeight + "px";
+    applyWrapperStyles();
+
+    let left = rect.left + rect.width / 2 - totalWidth / 2;
+    let top =
+      currentContext === "image"
+        ? rect.top - totalHeight - 16
+        : rect.top - totalHeight - 16;
+    if (top < 8) top = rect.bottom + 16;
+    if (left < 10) left = 10;
+    if (left + totalWidth > window.innerWidth - 10)
+      left = window.innerWidth - totalWidth - 10;
+
+    toastEl.style.left = left + "px";
+    toastEl.style.top = top + "px";
+    toastEl.style.display = "block";
+    toastEl.style.pointerEvents = "auto";
+    canvas.style.pointerEvents = "auto";
+
+    if (!isVisible) {
+      isVisible = true;
+      springs.opacity.val = 0;
+      springs.opacity.vel = 0;
+      springs.scale.val = 0.8;
+      springs.scale.vel = 0;
+      toastEl.style.opacity = "0";
+      toastEl.style.transform = "scale(0.8)";
     }
-    // Draws any image blob onto an offscreen canvas and exports as PNG
-    function normaliseToPng(blob) {
-      return new Promise((resolve, reject) => {
-        const url = URL.createObjectURL(blob)
-        const img = new Image()
-        img.onload = () => {
-          const offscreen = document.createElement('canvas')
-          offscreen.width = img.naturalWidth
-          offscreen.height = img.naturalHeight
-          const octx = offscreen.getContext('2d')
-          octx.drawImage(img, 0, 0)
-          URL.revokeObjectURL(url)
-          offscreen.toBlob(pngBlob => {
-            if (pngBlob) resolve(pngBlob)
-            else reject(new Error('toBlob failed'))
-          }, 'image/png')
-        }
-        img.onerror = () => {
-          URL.revokeObjectURL(url)
-          reject(new Error('Image load failed'))
-        }
-        img.src = url
-      })
+    wake();
+  }
+
+  function hideToast() {
+    isVisible = false;
+    toastEl.style.pointerEvents = "none";
+    canvas.style.pointerEvents = "none";
+    animState.hoveredButtonIndex = -1;
+    isMouseDown = false;
+    wake();
+  }
+  // --- Animation Loop ---
+  function wake() {
+    if (!isAwake) {
+      isAwake = true;
+      lastTime = null;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = requestAnimationFrame(loop);
     }
-    // --- Drawing Utilities ---
-    function roundRect(ctx, x, y, w, h, r) {
-      if (w < 2 * r) r = w / 2
-      if (h < 2 * r) r = h / 2
-      ctx.beginPath()
-      ctx.moveTo(x + r, y)
-      ctx.arcTo(x + w, y, x + w, y + h, r)
-      ctx.arcTo(x + w, y + h, x, y + h, r)
-      ctx.arcTo(x, y + h, x, y, r)
-      ctx.arcTo(x, y, x + w, y, r)
-      ctx.closePath()
-    }
-    // --- Bootstrap ---
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', init)
+  }
+
+  function loop(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+    lastTime = timestamp;
+
+    updateState(dt);
+    draw();
+
+    // Must check BOTH velocity AND distance to target so springs don't sleep mid-bounce
+    const opacityTarget = isVisible ? 1 : 0;
+    const scaleTarget = isVisible ? 1 : 0.9;
+
+    const opacityMoving =
+      Math.abs(springs.opacity.vel) > 0.01 ||
+      Math.abs(springs.opacity.val - opacityTarget) > 0.01;
+    const scaleMoving =
+      Math.abs(springs.scale.vel) > 0.01 ||
+      Math.abs(springs.scale.val - scaleTarget) > 0.01;
+
+    const buttonsMoving = springs.buttons.some((b, i) => {
+      const hoverTarget = animState.hoveredButtonIndex === i ? 1 : 0;
+      const activeTarget =
+        animState.hoveredButtonIndex === i && isMouseDown ? 1 : 0;
+      return (
+        Math.abs(b.hover.vel) > 0.01 ||
+        Math.abs(b.hover.val - hoverTarget) > 0.01 ||
+        Math.abs(b.active.vel) > 0.01 ||
+        Math.abs(b.active.val - activeTarget) > 0.01
+      );
+    });
+
+    if (opacityMoving || scaleMoving || buttonsMoving) {
+      animationId = requestAnimationFrame(loop);
     } else {
-      init()
+      isAwake = false;
+      animationId = null;
+      if (!isVisible) toastEl.style.display = "none";
     }
-  })()
+  }
+  function updateState(dt) {
+    const targetOpacity = isVisible ? 1 : 0;
+    const targetScale = isVisible ? 1 : 0.9;
+    stepSpring(
+      springs.opacity,
+      targetOpacity,
+      SPRING_STIFFNESS,
+      SPRING_DAMPING,
+      dt,
+    );
+    stepSpring(
+      springs.scale,
+      targetScale,
+      SPRING_STIFFNESS,
+      SPRING_DAMPING,
+      dt,
+    );
+    toastEl.style.opacity = springs.opacity.val;
+    toastEl.style.transform = `scale(${springs.scale.val})`;
+    animState.opacity = springs.opacity.val;
+    animState.scale = springs.scale.val;
+    const contextBtns = activeButtons;
+    // Ensure springs.buttons is sized to current context button count
+    while (springs.buttons.length < contextBtns.length) {
+      springs.buttons.push({
+        hover: { val: 0, vel: 0 },
+        active: { val: 0, vel: 0 },
+      });
+    }
+    contextBtns.forEach((_, i) => {
+      const sb = springs.buttons[i];
+      if (!sb) return;
+      const isHover = animState.hoveredButtonIndex === i;
+      const isActive = isHover && isMouseDown;
+      stepSpring(sb.hover, isHover ? 1 : 0, HOVER_STIFFNESS, HOVER_DAMPING, dt);
+      stepSpring(
+        sb.active,
+        isActive ? 1 : 0,
+        HOVER_STIFFNESS * 1.5,
+        HOVER_DAMPING * 1.2,
+        dt,
+      );
+      animState.buttonHovers[i] = sb.hover.val;
+      animState.buttonActive[i] = sb.active.val;
+    });
+  }
+  function draw() {
+    const { style } = config;
+    const contextBtns = activeButtons;
+    const dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    const baseBtnSize = style.iconSize + style.iconPadding * 2;
+    buttons = [];
+    let x = style.padding;
+    const y = style.padding;
+    contextBtns.forEach((btn, i) => {
+      const hoverVal = animState.buttonHovers[i] ?? 0;
+      const activeVal = animState.buttonActive[i] ?? 0;
+      const targetScale =
+        1 +
+        hoverVal * (style.hoverScale - 1) -
+        activeVal * (style.hoverScale - style.activeScale);
+      const currentBtnSize = baseBtnSize * targetScale;
+      const offset = (baseBtnSize - currentBtnSize) / 2;
+      // Hit-test box always uses base size so hover doesn't jitter
+      buttons.push({ x, y, w: baseBtnSize, h: baseBtnSize, data: btn });
+      const bx = x + offset;
+      const by = y + offset;
+      if (hoverVal > 0.001) {
+        ctx.fillStyle = style.hoverColor;
+        ctx.globalAlpha = style.hoverOpacity * hoverVal;
+
+        // Use individual override if present, else fallback to global buttonRadius
+        const baseRadius =
+          btn.borderRadius !== undefined &&
+          btn.borderRadius !== null &&
+          btn.borderRadius !== ""
+            ? Number(btn.borderRadius)
+            : style.buttonRadius !== undefined
+              ? style.buttonRadius
+              : 6;
+        const targetRadius = baseRadius * targetScale;
+
+        roundRect(ctx, bx, by, currentBtnSize, currentBtnSize, targetRadius);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      const iconImg = loadedIcons[btn.id];
+      if (iconImg && iconsReady) {
+        const lift = hoverVal * -1 * (style.iconLift || 0);
+        const scaledIconSize = style.iconSize * targetScale;
+        const ix = x + (baseBtnSize - scaledIconSize) / 2;
+        const iy = y + (baseBtnSize - scaledIconSize) / 2 + lift;
+        ctx.filter =
+          hoverVal > 0.001 ? `brightness(${1 + hoverVal * 0.3})` : "none";
+        ctx.drawImage(iconImg, ix, iy, scaledIconSize, scaledIconSize);
+        ctx.filter = "none";
+      }
+      x += baseBtnSize + style.buttonSpacing;
+    });
+  }
+  // --- Icon Loading ---
+  // Percent-encoding avoids the base64 path, whose fromCharCode(...bytes)
+  // spread overflows the call stack on large pasted SVGs
+  function svgToDataUri(svgStr) {
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
+  }
+  function loadSingleIcon(btn) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      let src = btn.icon || "";
+      if (src.trim().startsWith("<svg")) {
+        try {
+          src = svgToDataUri(src);
+        } catch (e) {
+          console.error("Icon encoding failed", e);
+          return resolve(null);
+        }
+      }
+      img.onload = () => resolve({ id: btn.id, img });
+      img.onerror = () => {
+        console.warn(`Failed to load icon for ${btn.id}`);
+        resolve(null);
+      };
+      img.src = src;
+    });
+  }
+  function loadIcons() {
+    loadedIcons = {};
+    iconsReady = false;
+    const total = config.buttons.length;
+    // Size springs to the max possible button count (all buttons)
+    // so we never have index gaps regardless of context
+    springs.buttons = config.buttons.map(() => ({
+      hover: { val: 0, vel: 0 },
+      active: { val: 0, vel: 0 },
+    }));
+    animState.buttonHovers = new Array(total).fill(0);
+    animState.buttonActive = new Array(total).fill(0);
+    if (total === 0) {
+      iconsReady = true;
+      return;
+    }
+    Promise.all(config.buttons.map(loadSingleIcon)).then((results) => {
+      results.forEach((r) => {
+        if (r) loadedIcons[r.id] = r.img;
+      });
+      iconsReady = true;
+      if (isVisible) requestAnimationFrame(draw);
+    });
+  }
+
+  function handleCanvasDown(e) {
+    // Keep the page's highlight intact while clicking the toast; otherwise
+    // the default mousedown action collapses the user's selection
+    e.preventDefault();
+    if (animState.hoveredButtonIndex !== -1) {
+      isMouseDown = true;
+      wake();
+    }
+  }
+  async function handleCanvasUp() {
+    if (!chrome.runtime?.id) return;
+    isMouseDown = false;
+    wake();
+    if (animState.hoveredButtonIndex === -1) return;
+    const btn = buttons[animState.hoveredButtonIndex];
+    if (!btn) return;
+    const { type, url, action } = btn.data;
+
+    if (type === "link") {
+      const targetUrl = url.includes("%s")
+        ? url.replaceAll("%s", encodeURIComponent(currentSelection))
+        : url;
+      window.open(targetUrl, "_blank");
+    } else if (type === "image-search") {
+      handleImageSearch(url);
+    } else if (type === "transform") {
+      let text = currentSelection;
+      if (action === "uppercase") text = text.toUpperCase();
+      if (action === "lowercase") text = text.toLowerCase();
+      if (action === "urlencode") text = encodeURIComponent(text);
+      if (selectionRange) {
+        selectionRange.deleteContents();
+        selectionRange.insertNode(document.createTextNode(text));
+      }
+    } else if (type === "webhook") {
+      chrome.runtime.sendMessage({
+        type: "WEBHOOK",
+        url: url,
+        text: currentSelection,
+      });
+    } else if (type === "action") {
+      if (action === "copy") {
+        await handleCopy();
+      } else if (action === "paste") {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (selectionRange) {
+            selectionRange.deleteContents();
+            selectionRange.insertNode(document.createTextNode(text));
+          }
+        } catch (err) {
+          console.error("[Toast] Paste failed:", err);
+        }
+      } else if (action === "markdown") {
+        await handleMarkdownCopy(btn.data);
+      }
+    }
+    hideToast();
+  }
+
+  async function handleMarkdownCopy(btn) {
+    if (!chrome.runtime?.id) return;
+    const source = btn.markdownSource || "selection";
+    let htmlPayload = "";
+
+    if (source === "page") {
+      const clone = document.body.cloneNode(true);
+      const noisy = [
+        "script",
+        "style",
+        "noscript",
+        "iframe",
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        '[aria-hidden="true"]',
+      ];
+      noisy.forEach((sel) => {
+        clone.querySelectorAll(sel).forEach((el) => el.remove());
+      });
+      const title = document.title.trim();
+      htmlPayload = title
+        ? `<h1>${title}</h1>\n${clone.innerHTML}`
+        : clone.innerHTML;
+    } else {
+      if (!selectionRange) return;
+      const fragment = selectionRange.cloneContents();
+      const wrapper = document.createElement("div");
+      wrapper.appendChild(fragment);
+      htmlPayload = wrapper.innerHTML;
+    }
+
+    try {
+      const markdown = turndownService.turndown(htmlPayload);
+      await navigator.clipboard.writeText(markdown);
+    } catch (err) {
+      console.error("[Toast] Markdown copy failed:", err);
+    }
+  }
+  // --- Action Handlers ---
+  function handleImageSearch(urlTemplate) {
+    if (!imageContext.isAccessible || !imageContext.resolvedUrl) {
+      // data: or blob: URI — can't be fetched by remote engines
+      console.warn(
+        "[Toast] Image search unavailable: image src is a data/blob URI and cannot be resolved by remote search engines.",
+      );
+      return;
+    }
+    const targetUrl = urlTemplate.replaceAll(
+      "%s",
+      encodeURIComponent(imageContext.resolvedUrl),
+    );
+    window.open(targetUrl, "_blank");
+  }
+  async function handleCopy() {
+    if (currentContext === "image") {
+      await copyImage();
+    } else {
+      try {
+        await navigator.clipboard.writeText(currentSelection);
+      } catch (err) {
+        console.error("[Toast] Copy text failed:", err);
+      }
+    }
+  }
+  async function copyImage() {
+    const src = imageContext.resolvedUrl || imageContext.src;
+    if (!src) return;
+    // data: URI — decode and write directly, no fetch needed
+    if (src.startsWith("data:image/png")) {
+      try {
+        const res = await fetch(src);
+        const blob = await res.blob();
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": blob }),
+        ]);
+      } catch (err) {
+        console.error("[Toast] Copy image (data URI) failed:", err);
+      }
+      return;
+    }
+    // Remote URL — fetch the image. Will fail for cross-origin images
+    // that don't set CORS headers, which is most of the web. We try anyway
+    // and fall back to copying the URL as plain text.
+    try {
+      const res = await fetch(src, { mode: "cors" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      // Normalise to PNG since ClipboardItem only reliably accepts image/png
+      const pngBlob = await normaliseToPng(blob);
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": pngBlob }),
+      ]);
+    } catch {
+      // CORS or fetch failure — copy the URL instead as a graceful fallback
+      console.warn(
+        "[Toast] Could not fetch image for clipboard, copying URL instead.",
+      );
+      try {
+        await navigator.clipboard.writeText(src);
+      } catch (err) {
+        console.error("[Toast] Fallback URL copy failed:", err);
+      }
+    }
+  }
+  // Draws any image blob onto an offscreen canvas and exports as PNG
+  function normaliseToPng(blob) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const offscreen = document.createElement("canvas");
+        offscreen.width = img.naturalWidth;
+        offscreen.height = img.naturalHeight;
+        const octx = offscreen.getContext("2d");
+        octx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        offscreen.toBlob((pngBlob) => {
+          if (pngBlob) resolve(pngBlob);
+          else reject(new Error("toBlob failed"));
+        }, "image/png");
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Image load failed"));
+      };
+      img.src = url;
+    });
+  }
+  // --- Drawing Utilities ---
+  function roundRect(ctx, x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  // --- Bootstrap ---
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
